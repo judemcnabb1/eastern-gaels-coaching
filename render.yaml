@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: eastern-gaels-coaching
+    runtime: docker
+    plan: starter
+    healthCheckPath: /login
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: COOKIE_SECURE
+        value: "1"
+    disk:
+      name: eastern-gaels-data
+      mountPath: /data
+      sizeGB: 1
