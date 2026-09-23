@@ -44,39 +44,50 @@ def parse_expiry_text(x):
  try:
   month=datetime.strptime(m.group(1),"%B").month;year=int(m.group(2));return date(year,month,calendar.monthrange(year,month)[1]).isoformat()
  except:return None
+def yn(x):
+ t=str(x or '').strip().upper()
+ if t in ('YES','Y','TRUE','1'): return 'Yes'
+ if t in ('NO','N','FALSE','0'): return 'No'
+ return 'Unknown'
 def parse_coaching_xlsx(path):
- wb=load_workbook(path,data_only=True,read_only=True);ws=next((wb[n] for n in wb.sheetnames if clean_name(n).startswith("GARDA VETTING")),None)
- if ws is None:raise ValueError("Missing Garda Vetting & Safeguarding worksheet")
+ wb=load_workbook(path,data_only=True,read_only=True);ws=next((wb[n] for n in wb.sheetnames if clean_name(n).startswith('GARDA VETTING')),None)
+ if ws is None:raise ValueError('Missing Garda Vetting & Safeguarding worksheet')
  coaches={}
- for row in ws.iter_rows(min_row=2,max_col=4,values_only=True):
+ for row in ws.iter_rows(min_row=2,max_col=5,values_only=True):
   if not row[0]:continue
-  k=coach_key(row[0]);coaches[k]={"name":" ".join(str(row[0]).strip().split()),"garda_status":str(row[1] or "Unknown").strip(),"garda_expiry":parse_expiry_text(row[1]),"safeguarding":str(row[2] or "Unknown").strip(),"qualification":str(row[3] or "Unknown").strip(),"teams":[]}
- qws=next((wb[n] for n in wb.sheetnames if clean_name(n).startswith("COACHES COURSE QUALIFICATION")),None)
+  k=coach_key(row[0]);coaches[k]={'name':' '.join(str(row[0]).strip().split()),'garda_vetted':yn(row[1]),'garda_expiry':parse_expiry_text(row[2]),'garda_expiry_text':str(row[2] or '').strip(),'safeguarding':yn(row[3]),'qualification':str(row[4] or 'Unknown').strip(),'teams':[]}
+ qws=next((wb[n] for n in wb.sheetnames if clean_name(n).startswith('COACHES COURSE QUALIFICATION')),None)
  if qws:
   for row in qws.iter_rows(min_row=2,max_col=2,values_only=True):
-   k=coach_key(row[0]);q=str(row[1] or "Unknown").strip()
-   if k in coaches and q.upper()!="UNKNOWN":coaches[k]["qualification"]=q
- pws=next((wb[n] for n in wb.sheetnames if clean_name(n).startswith("COACHES POOL SUMMARY")),None);teams={}
+   if not row[0]:continue
+   k=coach_key(row[0]);q=str(row[1] or 'Unknown').strip()
+   if k in coaches and q.upper() not in ('','UNKNOWN','NONE'):coaches[k]['qualification']=q
+ pws=next((wb[n] for n in wb.sheetnames if clean_name(n).startswith('COACHES POOL SUMMARY')),None);teams={}
  if pws:
   for row in pws.iter_rows(min_row=2,values_only=True):
    if not row[0]:continue
-   team=" ".join(str(row[0]).strip().upper().split());names=[]
+   team=' '.join(str(row[0]).strip().upper().split());names=[]
    for raw in row[2:]:
     if not raw or not str(raw).strip():continue
     k=coach_key(raw)
-    if k not in coaches:coaches[k]={"name":" ".join(str(raw).strip().title().split()),"garda_status":"Unknown","garda_expiry":None,"safeguarding":"Unknown","qualification":"Unknown","teams":[]}
-    names.append(coaches[k]["name"]);coaches[k]["teams"].append(team)
+    if k not in coaches:coaches[k]={'name':' '.join(str(raw).strip().title().split()),'garda_vetted':'Unknown','garda_expiry':None,'garda_expiry_text':'','safeguarding':'Unknown','qualification':'Unknown','teams':[]}
+    names.append(coaches[k]['name']);coaches[k]['teams'].append(team)
    teams[team]=names
- return {"coaches":coaches,"teams":teams,"imported_at":datetime.now().isoformat(timespec="seconds")}
+ return {'coaches':coaches,'teams':teams,'imported_at':datetime.now().isoformat(timespec='seconds')}
+
 def expiry_bucket(c,today=None):
- today=today or date.today();ex=c.get("garda_expiry")
- if not ex:return ("unknown",None)
+ today=today or date.today();v=str(c.get('garda_vetted',c.get('garda_status','Unknown'))).strip().upper()
+ if v=='NO':return ('not_vetted',None)
+ if v!='YES':return ('unknown',None)
+ ex=c.get('garda_expiry')
+ if not ex:return ('unknown_expiry',None)
  try:d=date.fromisoformat(ex);days=(d-today).days
- except:return ("unknown",None)
- if days<0:return ("expired",days)
- if days<=90:return ("urgent",days)
- if days<=180:return ("warning",days)
- return ("valid",days)
+ except:return ('unknown_expiry',None)
+ if days<0:return ('expired',days)
+ if days<=90:return ('urgent',days)
+ if days<=180:return ('warning',days)
+ return ('valid',days)
+
 
 def clean_name(x):
  return ' '.join(str(x or '').strip().upper().split())
@@ -218,15 +229,15 @@ class H(BaseHTTPRequestHandler):
     mx=max([int(v) for v in data.values()] or [1]);return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
    total=int(DEMO['age_totals'][g]);b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div><div class="grid"><div class="card"><h3>Residential catchment</h3>{bars2(DEMO['age_areas'][g])}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO['age_schools'][g])}</div></div><div class="card"><p class="muted">Figures are imported from the updated Eastern Gaels demographics workbook. Zero-value categories are retained so the source structure remains visible.</p></div>''';return self.out(page(g+' Demographics',b,u))
   if path=='/coaching-team':
-   c.close();coaches=list(COACHING.get('coaches',{}).values());teams=COACHING.get('teams',{});buckets={'expired':0,'urgent':0,'warning':0,'unknown':0,'valid':0}
+   c.close();coaches=list(COACHING.get('coaches',{}).values());teams=COACHING.get('teams',{});buckets={'expired':0,'urgent':0,'warning':0,'unknown':0,'unknown_expiry':0,'not_vetted':0,'valid':0}
    for x in coaches:buckets[expiry_bucket(x)[0]]+=1
-   safe=sum(str(x.get('safeguarding','')).strip().upper() not in ('','UNKNOWN','NONE') for x in coaches);qual=sum(str(x.get('qualification','')).strip().upper() not in ('','UNKNOWN','NONE') for x in coaches);rows='';order={'expired':0,'urgent':1,'warning':2,'unknown':3,'valid':4}
+   vetted=sum(str(x.get('garda_vetted',x.get('garda_status',''))).strip().upper()=='YES' for x in coaches);safe=sum(str(x.get('safeguarding','')).strip().upper()=='YES' for x in coaches);qual=sum(str(x.get('qualification','')).strip().upper() not in ('','UNKNOWN','NONE','NO') for x in coaches);rows='';order={'expired':0,'urgent':1,'warning':2,'unknown_expiry':3,'not_vetted':4,'unknown':5,'valid':6}
+   labels={'expired':'Expired','urgent':'Expires <=90 days','warning':'Expires <=180 days','unknown_expiry':'Vetted - expiry missing','not_vetted':'Not vetted','unknown':'Vetting unknown','valid':'Vetted / valid'}
    for x in sorted(coaches,key=lambda z:(order[expiry_bucket(z)[0]],z.get('name',''))):
-    bucket,days=expiry_bucket(x);labels={'expired':'EXPIRED','urgent':'90 DAYS','warning':'180 DAYS','unknown':'UNKNOWN','valid':'VALID'};detail=x.get('garda_status') or 'Unknown'
-    if days is not None and bucket in ('urgent','warning'):detail+=f' - {days} days remaining'
-    rows+=f'<tr><td><b>{e(x.get("name"))}</b></td><td><span class="badge {bucket}">{labels[bucket]}</span><br><small>{e(detail)}</small></td><td>{e(x.get("safeguarding"))}</td><td>{e(x.get("qualification"))}</td><td>{e(", ".join(x.get("teams",[])))}</td></tr>'
+    bucket,days=expiry_bucket(x);expiry=x.get('garda_expiry_text') or x.get('garda_expiry') or '-';detail=('Expired '+str(abs(days))+' days ago' if bucket=='expired' and days is not None else (str(days)+' days remaining' if days is not None else expiry));sv=str(x.get('safeguarding','Unknown'));qv=str(x.get('qualification','Unknown'))
+    rows+=f'<tr><td><b>{e(x.get("name"))}</b></td><td>{e(x.get("garda_vetted",x.get("garda_status","Unknown")))}</td><td><span class="badge {bucket}">{labels[bucket]}</span><br><small>{e(detail)}</small></td><td>{e(sv)}</td><td>{e(qv)}</td><td>{e(", ".join(x.get("teams",[])))}</td></tr>'
    teamcards=''.join(f'<div class="card"><h3>{e(k)}</h3><div class="stat">{len(v)}</div><div class="muted">coaches</div><p>{e(", ".join(v))}</p></div>' for k,v in teams.items())
-   b=f'''<h2>Coaching Team & Compliance</h2><p class="muted">Garda vetting, safeguarding, qualifications and coaching pool.</p><div class="grid"><div class="card kpi"><div class="stat">{len(coaches)}</div><b>Total coaches</b></div><div class="card kpi"><div class="stat">{buckets['expired']+buckets['urgent']}</div><b>Vetting action needed</b><small>expired or within 90 days</small></div><div class="card kpi"><div class="stat">{buckets['unknown']}</div><b>Vetting unknown</b></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding recorded</b><small>of {len(coaches)}</small></div><div class="card kpi"><div class="stat">{qual}</div><b>Qualified coaches</b></div></div><div class="card"><h3>Expiry warnings</h3><p><b>Red:</b> expired / within 90 days. <b>Amber:</b> within 180 days. <b>Unknown:</b> expiry not recorded.</p><div class="tw"><table><tr><th>Coach</th><th>Garda vetting</th><th>Safeguarding</th><th>Qualification</th><th>Teams</th></tr>{rows}</table></div></div><h3>Coaching pool</h3><div class="grid">{teamcards}</div>'''
+   b=f'''<h2>Coaching Team & Compliance</h2><p class="muted">Garda Vetting and Safeguarding are tracked independently. Vetting expiry warnings apply only when Garda Vetted is Yes.</p><div class="grid"><div class="card kpi"><div class="stat">{len(coaches)}</div><b>Total coaches</b></div><div class="card kpi"><div class="stat">{vetted}</div><b>Garda vetted</b><small>of {len(coaches)}</small></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding completed</b><small>of {len(coaches)}</small></div><div class="card kpi"><div class="stat">{qual}</div><b>Qualified coaches</b></div><div class="card kpi"><div class="stat">{buckets['expired']+buckets['urgent']}</div><b>Vetting expiry action</b><small>expired / within 90 days</small></div></div><div class="card"><h3>Coach compliance</h3><div class="tw"><table><tr><th>Coach</th><th>Garda Vetted</th><th>Vetting Expiry</th><th>Safeguarding</th><th>Qualification</th><th>Teams</th></tr>{rows}</table></div></div><h3>Coaching pool</h3><div class="grid">{teamcards}</div>'''
    return self.out(page('Coaching Team',b,u))
   if path=='/reports':
    w,a=self.vis(u)
