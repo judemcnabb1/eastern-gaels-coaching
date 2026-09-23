@@ -1,14 +1,81 @@
 #!/usr/bin/env python3
-import os,re,json,sqlite3,secrets,hashlib,hmac,csv,io,html
+import os,re,json,sqlite3,secrets,hashlib,hmac,csv,io,html,shutil
+from openpyxl import load_workbook
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from urllib.parse import urlparse,parse_qs
 from http.cookies import SimpleCookie
 from datetime import date,datetime
 BASE=os.path.dirname(os.path.abspath(__file__))
-DATA_DIR=os.environ.get('DATA_DIR',BASE)
+DATA_DIR=os.environ.get('DATA_DIR', os.path.dirname(os.environ['DATABASE_PATH']) if os.environ.get('DATABASE_PATH') else BASE)
 os.makedirs(DATA_DIR,exist_ok=True)
 DB=os.environ.get('DATABASE_PATH',os.path.join(DATA_DIR,'eastern_gaels.db'))
 SESS={}
+DEMO_FILE=os.path.join(DATA_DIR,'demographics_current.json')
+DEMO_SOURCE=os.path.join(BASE,'demographics.json')
+def load_demo():
+ p=DEMO_FILE if os.path.exists(DEMO_FILE) else DEMO_SOURCE
+ with open(p,encoding='utf8') as f:d=json.load(f)
+ # Normalise current and legacy demographics field names.
+ d.setdefault('catchment', d.get('areas', {}))
+ d.setdefault('school_totals', d.get('schools', {}))
+ d.setdefault('areas', d.get('catchment', {}))
+ d.setdefault('schools', d.get('school_totals', {}))
+ d.setdefault('age_totals', {})
+ d.setdefault('age_areas', {})
+ d.setdefault('age_schools', {})
+ d.setdefault('games', {})
+ d.setdefault('growth', {})
+ return d
+DEMO=load_demo()
+
+def clean_name(x):
+ return ' '.join(str(x or '').strip().upper().split())
+def num(x):
+ try:return int(x or 0)
+ except:return 0
+def parse_demographics_xlsx(path):
+ wb=load_workbook(path,data_only=True,read_only=True)
+ names=wb.sheetnames
+ def find_sheet(prefix):
+  for n in names:
+   if clean_name(n).startswith(clean_name(prefix)):return wb[n]
+  raise ValueError('Missing worksheet: '+prefix)
+ agews=find_sheet('Age Group Numbers Breakdown')
+ age_totals={};age_areas={};age_schools={};warnings=[]
+ for col,g in zip([1,4,7,10,13,16,19,22],['U12','U11','U10','U9','U8','U7','U6','U5']):
+  areas={clean_name(agews.cell(r,col).value):num(agews.cell(r,col+1).value) for r in range(2,8) if agews.cell(r,col).value}
+  schools={clean_name(agews.cell(r,col).value):num(agews.cell(r,col+1).value) for r in range(10,17) if agews.cell(r,col).value}
+  total=num(agews.cell(8,col+1).value) or sum(areas.values())
+  age_totals[g]=total;age_areas[g]=areas;age_schools[g]=schools
+  if sum(areas.values())!=total:warnings.append(f'{g} area breakdown sums to {sum(areas.values())}, total is {total}')
+  if sum(schools.values())!=total:warnings.append(f'{g} school breakdown sums to {sum(schools.values())}, total is {total}')
+ def two_col(prefix,skip_totals=True):
+  ws=find_sheet(prefix);d={}
+  for row in ws.iter_rows(min_row=2,max_col=2,values_only=True):
+   k=clean_name(row[0]);v=row[1]
+   if not k or (skip_totals and k.startswith('TOTAL')):continue
+   if v is None or str(v).strip()=='':continue
+   d[k]=num(v)
+  return d
+ games=two_col('Games Played By Age Group')
+ # Growth sheet uses Excel numeric years (e.g. 2023.0). Parse them as years
+ # instead of passing them through clean_name(), which would produce '2023.0'.
+ growthws=find_sheet('Growth Year on Year');growth={}
+ for yr,val in growthws.iter_rows(min_row=2,max_col=2,values_only=True):
+  try:
+   year=int(float(yr))
+  except (TypeError,ValueError):
+   continue
+  if year < 1900 or year > 2200 or val is None or str(val).strip()=='':
+   continue
+  growth[str(year)]=num(val)
+ areas=two_col('Parish Catchment Areas')
+ schools=two_col('Schools Catchment Areas')
+ total_players=growth.get(max(growth.keys(),key=int),sum(age_totals.values())) if growth else sum(age_totals.values())
+ if sum(areas.values())!=total_players:warnings.append(f'Parish catchment sums to {sum(areas.values())}, latest player total is {total_players}')
+ if sum(schools.values())!=total_players:warnings.append(f'School catchment sums to {sum(schools.values())}, latest player total is {total_players}')
+ return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
+
 def dbc(): c=sqlite3.connect(DB);c.row_factory=sqlite3.Row;return c
 def hp(p,s=None):
  s=s or secrets.token_bytes(16);return s.hex()+'$'+hashlib.pbkdf2_hmac('sha256',p.encode(),s,210000).hex()
@@ -29,8 +96,8 @@ def fd(x):
 def page(title,b,u=None):
  nav=''
  if u:
-  nav='<nav><a href="/">Today</a><a href="/schedule">Schedule</a><a href="/schools">Schools</a><a href="/reports">Reports</a>'+('<a href="/admin">Admin</a>' if u['role']=='admin' else '')+'<i></i><span>'+e(u['name'])+'</span><a href="/logout">Log out</a></nav>'
- return f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(title)} · Eastern Gaels</title><style>:root{{--g:#164d2c;--bg:#f3f6f3;--m:#657269}}*{{box-sizing:border-box}}body{{font-family:system-ui;margin:0;background:var(--bg);color:#18231b}}header{{background:var(--g);color:#fff;padding:18px}}header div,main{{max-width:1100px;margin:auto}}header h1{{margin:0;font-size:22px}}nav{{display:flex;gap:5px;align-items:center;background:#fff;padding:8px max(12px,calc((100% - 1100px)/2));box-shadow:0 1px 8px #0001;overflow:auto}}nav a{{color:var(--g);font-weight:700;text-decoration:none;padding:8px}}nav i{{flex:1}}nav span{{white-space:nowrap;color:var(--m)}}main{{padding:18px}}.card{{background:#fff;padding:18px;border-radius:14px;margin:14px 0;box-shadow:0 2px 12px #0000000d}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}}.stat{{font-size:30px;font-weight:800;color:var(--g)}}.kpi{{position:relative;overflow:hidden}}.kpi small{{display:block;color:var(--m);margin-top:3px}}.barrow{{display:grid;grid-template-columns:minmax(120px,1.4fr) 3fr 52px;gap:10px;align-items:center;margin:11px 0}}.bartrack{{height:14px;background:#edf1ed;border-radius:999px;overflow:hidden}}.barfill{{height:100%;background:var(--g);border-radius:999px;min-width:2px}}.chartlink{{color:inherit;text-decoration:none}}.progress{{height:9px;background:#e8eee9;border-radius:999px;overflow:hidden;margin-top:8px}}.progress span{{display:block;height:100%;background:var(--g)}}.donut{{width:150px;height:150px;border-radius:50%;margin:12px auto;display:grid;place-items:center;background:conic-gradient(#164d2c 0 var(--done),#b85c5c var(--done) var(--cancel),#d8a82d var(--cancel) var(--closed),#dfe5e0 var(--closed) 100%)}}.donut:after{{content:'';width:92px;height:92px;background:white;border-radius:50%}}.legend{{display:flex;gap:12px;flex-wrap:wrap;font-size:13px}}.dot{{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px;background:#164d2c}}.muted{{color:var(--m)}}.session{{border-left:5px solid #267345}}.badge{{display:inline-block;padding:4px 9px;border-radius:999px;background:#e5f2e8;font-size:12px;font-weight:700}}.Completed{{background:#dff2e4}}.Cancelled{{background:#f7dddd}}.Rescheduled{{background:#fff0cc}}button,.btn{{display:inline-block;border:0;background:var(--g);color:#fff;padding:10px 13px;border-radius:9px;font-weight:700;text-decoration:none;cursor:pointer}}.secondary{{background:#e8eee9!important;color:#18231b!important}}input,select,textarea{{width:100%;padding:10px;border:1px solid #ccd5ce;border-radius:8px;font:inherit}}label{{display:block;font-weight:700;margin:10px 0 5px}}.row{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}.actions{{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}}table{{width:100%;border-collapse:collapse;background:#fff}}th,td{{padding:10px;border-bottom:1px solid #e4e9e5;text-align:left}}th{{font-size:12px;color:var(--m)}}.tw{{overflow:auto;border-radius:12px}}.login{{max-width:430px;margin:45px auto}}@media(max-width:650px){{main{{padding:12px}}.row{{grid-template-columns:1fr}}nav span{{display:none}}}}</style></head><body><header><div><h1>Eastern Gaels Schools Coaching</h1><small>2026–2027 Programme</small></div></header>{nav}<main>{b}</main></body></html>'''
+  nav='<nav><a href="/">Today</a><a href="/schedule">Schedule</a><a href="/schools">Schools</a><a href="/demographics">Demographics</a><a href="/reports">Reports</a>'+('<a href="/admin">Admin</a>' if u['role']=='admin' else '')+'<i></i><span>'+e(u['name'])+'</span><a href="/logout">Log out</a></nav>'
+ return f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(title)} · Eastern Gaels</title><style>:root{{--g:#164d2c;--bg:#f3f6f3;--m:#657269}}*{{box-sizing:border-box}}body{{font-family:system-ui;margin:0;background:var(--bg);color:#18231b}}header{{background:var(--g);color:#fff;padding:18px}}header div,main{{max-width:1100px;margin:auto}}header h1{{margin:0;font-size:22px}}nav{{display:flex;gap:5px;align-items:center;background:#fff;padding:8px max(12px,calc((100% - 1100px)/2));box-shadow:0 1px 8px #0001;overflow:auto}}nav a{{color:var(--g);font-weight:700;text-decoration:none;padding:8px}}nav i{{flex:1}}nav span{{white-space:nowrap;color:var(--m)}}main{{padding:18px}}.card{{background:#fff;padding:18px;border-radius:14px;margin:14px 0;box-shadow:0 2px 12px #0000000d}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}}.stat{{font-size:30px;font-weight:800;color:var(--g)}}.kpi{{position:relative;overflow:hidden}}.kpi small{{display:block;color:var(--m);margin-top:3px}}.barrow{{display:grid;grid-template-columns:minmax(120px,1.4fr) 3fr 52px;gap:10px;align-items:center;margin:11px 0}}.bartrack{{height:14px;background:#edf1ed;border-radius:999px;overflow:hidden}}.barfill{{height:100%;background:var(--g);border-radius:999px;min-width:2px}}.chartlink{{color:inherit;text-decoration:none}}.progress{{height:9px;background:#e8eee9;border-radius:999px;overflow:hidden;margin-top:8px}}.progress span{{display:block;height:100%;background:var(--g)}}.donut{{width:150px;height:150px;border-radius:50%;margin:12px auto;display:grid;place-items:center;background:conic-gradient(#164d2c 0 var(--done),#b85c5c var(--done) var(--cancel),#d8a82d var(--cancel) var(--closed),#dfe5e0 var(--closed) 100%)}}.donut:after{{content:'';width:92px;height:92px;background:white;border-radius:50%}}.legend{{display:flex;gap:12px;flex-wrap:wrap;font-size:13px}}.dot{{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px;background:#164d2c}}.muted{{color:var(--m)}}.session{{border-left:5px solid #267345}}.badge{{display:inline-block;padding:4px 9px;border-radius:999px;background:#e5f2e8;font-size:12px;font-weight:700}}.Completed{{background:#dff2e4}}.Cancelled{{background:#f7dddd}}.Rescheduled{{background:#fff0cc}}button,.btn{{display:inline-block;border:0;background:var(--g);color:#fff;padding:10px 13px;border-radius:9px;font-weight:700;text-decoration:none;cursor:pointer}}.secondary{{background:#e8eee9!important;color:#18231b!important}}input,select,textarea{{width:100%;padding:10px;border:1px solid #ccd5ce;border-radius:8px;font:inherit}}label{{display:block;font-weight:700;margin:10px 0 5px}}.row{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}.actions{{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}}table{{width:100%;border-collapse:collapse;background:#fff}}th,td{{padding:10px;border-bottom:1px solid #e4e9e5;text-align:left}}th{{font-size:12px;color:var(--m)}}.tw{{overflow:auto;border-radius:12px}}.login{{max-width:430px;margin:45px auto}}@media(max-width:650px){{main{{padding:12px}}.row{{grid-template-columns:1fr}}nav span{{display:none}}}}</style></head><body><header><div><h1>Eastern Gaels</h1><small>Coaching & Club Demographics · 2026–2027</small></div></header>{nav}<main>{b}</main></body></html>'''
 def card(s,admin=False):return f'''<div class="card session"><span class="badge {e(s['actual_status'])}">{e(s['actual_status'])}</span><h2>{e(s['school'])}</h2><div class="muted">{fd(s['date'])} · {e(s['start'])}–{e(s['end'])}</div><p><b>{e(s['coach'])}</b> · {e(s['class_group'])} · {e(s['age_group'])}<br>{e(s['title'])}</p><div class="actions"><a class="btn" href="/session?id={e(s['id'])}">Open session</a>{'<a class="btn secondary" href="/edit?id='+e(s['id'])+'">Edit</a>' if admin else ''}</div></div>'''
 class H(BaseHTTPRequestHandler):
  def log_message(self,*a):pass
@@ -39,6 +106,18 @@ class H(BaseHTTPRequestHandler):
  def red(self,x):self.send_response(303);self.send_header('Location',x);self.end_headers()
  def form(self):
   n=int(self.headers.get('Content-Length','0'));q=parse_qs(self.rfile.read(n).decode());return {k:(v if k=='ids' else v[-1]) for k,v in q.items()}
+ def upload_file(self):
+  n=int(self.headers.get('Content-Length','0'));raw=self.rfile.read(n);ct=self.headers.get('Content-Type','')
+  m=re.search(r'boundary=(?:\"([^\"]+)\"|([^;]+))',ct);
+  if not m:return None,None
+  boundary=(m.group(1) or m.group(2)).encode();parts=raw.split(b'--'+boundary)
+  for part in parts:
+   if b'name="demographics_file"' in part and b'filename=' in part:
+    head,sep,body=part.partition(b'\r\n\r\n')
+    if not sep:continue
+    fm=re.search(br'filename="([^"]*)"',head);name=fm.group(1).decode(errors='ignore') if fm else 'upload.xlsx'
+    return name,body.rstrip(b'\r\n-')
+  return None,None
  def user(self):
   z=SimpleCookie(self.headers.get('Cookie'));sid=z.get('egsid');uid=SESS.get(sid.value) if sid else None
   if not uid:return None
@@ -71,6 +150,19 @@ class H(BaseHTTPRequestHandler):
    if not s:return self.out(page('Not found','<div class="card">Session not found.</div>',u),404)
    if u['role']=='coach' and s['coach']!=(u['coach_name'] or u['name']):return self.out(page('Forbidden','<div class="card">Another coach owns this session.</div>',u),403)
    opts=''.join('<option'+(' selected' if s['actual_status']==x else '')+'>'+x+'</option>' for x in ['Scheduled','Completed','Cancelled','School Closed','Rescheduled']);b=card(s,u['role']=='admin')+f'''<div class="card"><form method="post"><input type="hidden" name="id" value="{e(s['id'])}"><label>Status</label><select name="status">{opts}</select><label>Attendance / children coached</label><input type="number" min="0" name="attendance" value="{e(s['attendance'])}"><label>Session notes</label><textarea name="notes" rows="5">{e(s['notes'])}</textarea><div class="actions"><button>Save session record</button></div></form></div>''';return self.out(page('Session',b,u))
+  if path=='/demographics':
+   c.close();years=sorted((int(y) for y in DEMO.get('growth',{}) if str(y).isdigit()));latest_year=years[-1] if years else datetime.now().year;prev_year=years[-2] if len(years)>1 else latest_year-1;total=DEMO.get('growth',{}).get(str(latest_year),sum(DEMO.get('age_totals',{}).values()));prev=DEMO.get('growth',{}).get(str(prev_year),0);growthpct=round((total-prev)*100/prev) if prev else 0;games=sum(DEMO.get('games',{}).values())
+   def bars(data):
+    mx=max([int(v) for v in data.values()] or [1]);return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
+   age=dict(sorted(DEMO['age_totals'].items(),key=lambda x:int(x[0][1:])))
+   agelinks=''.join(f'<a class="chartlink" href="/demographics/age?group={e(k)}"><div class="card"><h3>{e(k)}</h3><div class="stat">{int(v)}</div><div class="muted">players · tap for catchment & schools</div></div></a>' for k,v in age.items())
+   b=f'''<h2>Club Demographics</h2><p class="muted">Eastern Gaels player profile · {latest_year}</p><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Players</b><small>{latest_year} club population</small></div><div class="card kpi"><div class="stat">+{growthpct}%</div><b>Year-on-year growth</b><small>{prev} players in {prev_year}</small></div><div class="card kpi"><div class="stat">{len(DEMO['age_totals'])}</div><b>Age groups</b><small>U5 through U12</small></div><div class="card kpi"><div class="stat">{games}</div><b>Games played</b><small>recorded in source workbook</small></div></div><div class="grid"><div class="card"><h3>Membership growth</h3>{bars(DEMO['growth'])}</div><div class="card"><h3>Players by age group</h3>{bars(age)}</div></div><div class="grid"><div class="card"><h3>Where our players live</h3>{bars(DEMO['catchment'])}</div><div class="card"><h3>Schools represented</h3>{bars(DEMO['school_totals'])}</div></div><div class="card"><h3>Games played by team</h3>{bars(DEMO['games'])}</div><h3>Age-group detail</h3><div class="grid">{agelinks}</div>''';return self.out(page('Club Demographics',b,u))
+  if path=='/demographics/age':
+   c.close();g=q.get('group',[''])[0].upper()
+   if g not in DEMO['age_totals']:return self.red('/demographics')
+   def bars2(data):
+    mx=max([int(v) for v in data.values()] or [1]);return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
+   total=int(DEMO['age_totals'][g]);b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div><div class="grid"><div class="card"><h3>Residential catchment</h3>{bars2(DEMO['age_areas'][g])}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO['age_schools'][g])}</div></div><div class="card"><p class="muted">Figures are imported from the updated Eastern Gaels demographics workbook. Zero-value categories are retained so the source structure remains visible.</p></div>''';return self.out(page(g+' Demographics',b,u))
   if path=='/reports':
    w,a=self.vis(u)
    ss=c.execute('select * from sessions '+w+' order by date,start',a).fetchall()
@@ -105,7 +197,7 @@ class H(BaseHTTPRequestHandler):
    r=c.execute('select * from sessions '+w+con+extra+' order by date,start',vals).fetchall();c.close();rows=''.join(f'<tr><td>{fd(x["date"])}</td><td>{e(x["school"])}</td><td>{e(x["coach"])}</td><td>{e(x["class_group"])}</td><td><span class="badge {e(x["actual_status"])}">{e(x["actual_status"])}</span></td><td>{e(x["attendance"])}</td></tr>' for x in r);return self.out(page('Report detail',f'<h2>{e(title)}</h2><p class="muted">{len(r)} sessions</p><div class="tw"><table><tr><th>Date</th><th>School</th><th>Coach</th><th>Class</th><th>Status</th><th>Attendance</th></tr>{rows}</table></div><div class="actions"><a class="btn secondary" href="/reports">Back to dashboard</a></div>',u))
   if path=='/admin':
    if u['role']!='admin':c.close();return self.out(page('Forbidden','<div class="card">Admin access required.</div>',u),403)
-   us=c.execute('select * from users order by role,name').fetchall();co=[x[0] for x in c.execute('select distinct coach from sessions order by coach')];now=datetime.now();today=now.date().isoformat();clock=now.strftime('%H:%M');overdue=c.execute("select count(*) from sessions where actual_status='Scheduled' and (date < ? or (date = ? and coalesce(end,start,'23:59') < ?))",(today,today,clock)).fetchone()[0];c.close();opts=''.join(f'<option>{e(x)}</option>' for x in co);rows=''.join(f'<tr><td>{e(x["name"])}</td><td>{e(x["email"])}</td><td>{e(x["role"])}</td><td>{e(x["coach_name"])}</td></tr>' for x in us);b=f'''<h2>Administration</h2><div class="card"><h3>Past due sessions</h3><div class="stat">{overdue}</div><p class="muted">Scheduled sessions whose date/time has passed. Cancelled, School Closed, Rescheduled and already Completed sessions are not included.</p><div class="actions"><a class="btn" href="/admin/past-due">Review past sessions</a></div></div><div class="grid"><div class="card"><h3>Add user</h3><form method="post" action="/admin/user"><label>Name</label><input name="name" required><label>Email</label><input type="email" name="email" required><label>Temporary password</label><input type="password" minlength="8" name="password" required><label>Role</label><select name="role"><option>coach</option><option>admin</option></select><label>Timetable coach</label><select name="coach_name"><option value="">— None —</option>{opts}</select><div class="actions"><button>Create user</button></div></form></div><div class="card"><h3>Add session</h3><form method="post" action="/admin/session"><label>Date</label><input type="date" name="date" required><label>School</label><input name="school" required><label>Coach</label><input name="coach" required><div class="row"><div><label>Start</label><input type="time" name="start"></div><div><label>End</label><input type="time" name="end"></div></div><label>Class group</label><input name="class_group"><label>Age group</label><input name="age_group"><label>Title</label><input name="title" value="GAA Coaching"><div class="actions"><button>Add session</button></div></form></div></div><div class="card"><h3>Users</h3><div class="tw"><table><tr><th>Name</th><th>Email</th><th>Role</th><th>Timetable coach</th></tr>{rows}</table></div></div>''';return self.out(page('Admin',b,u))
+   us=c.execute('select * from users order by role,name').fetchall();co=[x[0] for x in c.execute('select distinct coach from sessions order by coach')];now=datetime.now();today=now.date().isoformat();clock=now.strftime('%H:%M');overdue=c.execute("select count(*) from sessions where actual_status='Scheduled' and (date < ? or (date = ? and coalesce(end,start,'23:59') < ?))",(today,today,clock)).fetchone()[0];c.close();opts=''.join(f'<option>{e(x)}</option>' for x in co);rows=''.join(f'<tr><td>{e(x["name"])}</td><td>{e(x["email"])}</td><td>{e(x["role"])}</td><td>{e(x["coach_name"])}</td></tr>' for x in us);b=f'''<h2>Administration</h2><div class="card"><h3>Past due sessions</h3><div class="stat">{overdue}</div><p class="muted">Scheduled sessions whose date/time has passed. Cancelled, School Closed, Rescheduled and already Completed sessions are not included.</p><div class="actions"><a class="btn" href="/admin/past-due">Review past sessions</a></div></div><div class="grid"><div class="card"><h3>Add user</h3><form method="post" action="/admin/user"><label>Name</label><input name="name" required><label>Email</label><input type="email" name="email" required><label>Temporary password</label><input type="password" minlength="8" name="password" required><label>Role</label><select name="role"><option>coach</option><option>admin</option></select><label>Timetable coach</label><select name="coach_name"><option value="">— None —</option>{opts}</select><div class="actions"><button>Create user</button></div></form></div><div class="card"><h3>Add session</h3><form method="post" action="/admin/session"><label>Date</label><input type="date" name="date" required><label>School</label><input name="school" required><label>Coach</label><input name="coach" required><div class="row"><div><label>Start</label><input type="time" name="start"></div><div><label>End</label><input type="time" name="end"></div></div><label>Class group</label><input name="class_group"><label>Age group</label><input name="age_group"><label>Title</label><input name="title" value="GAA Coaching"><div class="actions"><button>Add session</button></div></form></div></div><div class="card"><h3>Update Demographics</h3><p class="muted">Upload the latest Eastern Gaels demographics Excel workbook. The app validates it and shows a preview before anything is changed.</p><form method="post" action="/admin/demographics/preview" enctype="multipart/form-data"><label>Demographics workbook (.xlsx)</label><input type="file" name="demographics_file" accept=".xlsx" required><div class="actions"><button>Upload & preview</button></div></form></div><div class="card"><h3>Users</h3><div class="tw"><table><tr><th>Name</th><th>Email</th><th>Role</th><th>Timetable coach</th></tr>{rows}</table></div></div>''';return self.out(page('Admin',b,u))
   if path=='/admin/past-due':
    if u['role']!='admin':c.close();return self.out(page('Forbidden','<div class="card">Admin access required.</div>',u),403)
    now=datetime.now();today=now.date().isoformat();clock=now.strftime('%H:%M');r=c.execute("select * from sessions where actual_status='Scheduled' and (date < ? or (date = ? and coalesce(end,start,'23:59') < ?)) order by date,start",(today,today,clock)).fetchall();c.close()
@@ -113,6 +205,15 @@ class H(BaseHTTPRequestHandler):
    if not r:b='<h2>Past due sessions</h2><div class="card"><h3>All caught up</h3><p>There are no past-due sessions still marked Scheduled.</p><a class="btn secondary" href="/admin">Back to Admin</a></div>'
    else:b=f'''<h2>Past due sessions</h2><div class="card"><p>Review the sessions below. Untick anything that was not actually completed, then mark the selected sessions Completed.</p><form id="bulk" method="post" action="/admin/past-due"><div class="actions"><button>Mark selected as Completed</button><button type="button" class="secondary" onclick="document.querySelectorAll('input[name=ids]').forEach(x=>x.checked=true)">Select all</button><button type="button" class="secondary" onclick="document.querySelectorAll('input[name=ids]').forEach(x=>x.checked=false)">Clear</button></div></form></div><div class="tw"><table><tr><th>Complete?</th><th>Date</th><th>School</th><th>Coach</th><th>Time</th><th></th></tr>{rows}</table></div>'''
    return self.out(page('Past due sessions',b,u))
+  if path=='/admin/demographics/preview':
+   if u['role']!='admin':c.close();return self.out(page('Forbidden','<div class="card">Admin access required.</div>',u),403)
+   c.close();pending=os.path.join(DATA_DIR,'demographics_pending.json')
+   if not os.path.exists(pending):return self.red('/admin')
+   nd=json.load(open(pending,encoding='utf8'));old=load_demo();latest=lambda d:max((int(y) for y in d.get('growth',{}) if str(y).isdigit()),default=2026);ny=latest(nd);oy=latest(old);nt=nd.get('growth',{}).get(str(ny),sum(nd.get('age_totals',{}).values()));ot=old.get('growth',{}).get(str(oy),sum(old.get('age_totals',{}).values()));
+   changes=''.join(f'<tr><td>{e(g)}</td><td>{old.get("age_totals",{}).get(g,0)}</td><td>{nd.get("age_totals",{}).get(g,0)}</td><td>{nd.get("age_totals",{}).get(g,0)-old.get("age_totals",{}).get(g,0):+d}</td></tr>' for g in ['U5','U6','U7','U8','U9','U10','U11','U12'])
+   warns=''.join(f'<li>{e(x)}</li>' for x in nd.get('warnings',[])) or '<li>No validation warnings.</li>'
+   b=f'''<h2>Preview demographics import</h2><div class="grid"><div class="card kpi"><div class="stat">{ot}</div><b>Current players</b><small>{oy}</small></div><div class="card kpi"><div class="stat">{nt}</div><b>Uploaded players</b><small>{ny}</small></div><div class="card kpi"><div class="stat">{nt-ot:+d}</div><b>Change</b><small>players</small></div></div><div class="card"><h3>Age-group changes</h3><div class="tw"><table><tr><th>Age</th><th>Current</th><th>Uploaded</th><th>Change</th></tr>{changes}</table></div></div><div class="card"><h3>Validation</h3><ul>{warns}</ul><p class="muted">Warnings do not block import; review them before confirming.</p></div><div class="card"><form method="post" action="/admin/demographics/confirm"><div class="actions"><button>Confirm import</button><a class="btn secondary" href="/admin">Cancel</a></div></form></div>'''
+   return self.out(page('Preview demographics',b,u))
   if path=='/edit':
    if u['role']!='admin':c.close();return self.out('Forbidden',403)
    s=c.execute('select * from sessions where id=?',(q.get('id',[''])[0],)).fetchone();c.close()
@@ -123,7 +224,19 @@ class H(BaseHTTPRequestHandler):
    r=c.execute('select * from sessions order by date,start').fetchall();c.close();o=io.StringIO();w=csv.writer(o);w.writerow(r[0].keys() if r else []);[w.writerow(tuple(x)) for x in r];b=o.getvalue().encode();self.send_response(200);self.send_header('Content-Type','text/csv');self.send_header('Content-Disposition','attachment; filename="eastern-gaels-report.csv"');self.send_header('Content-Length',str(len(b)));self.end_headers();self.wfile.write(b);return
   c.close();return self.out(page('Not found','<div class="card">Page not found.</div>',u),404)
  def do_POST(self):
-  p=urlparse(self.path).path;f=self.form();c=dbc()
+  p=urlparse(self.path).path
+  if p=='/admin/demographics/preview':
+   u=self.need()
+   if not u or u['role']!='admin':return self.out('Forbidden',403)
+   name,data=self.upload_file()
+   if not data or not name.lower().endswith('.xlsx'):return self.out(page('Upload error','<div class="card"><h2>Please choose a valid .xlsx file.</h2><a class="btn" href="/admin">Back</a></div>',u),400)
+   tmp=os.path.join(DATA_DIR,'demographics_upload.xlsx')
+   try:
+    open(tmp,'wb').write(data);parsed=parse_demographics_xlsx(tmp);json.dump(parsed,open(os.path.join(DATA_DIR,'demographics_pending.json'),'w',encoding='utf8'),indent=2)
+   except Exception as ex:
+    return self.out(page('Upload error',f'<div class="card"><h2>Could not read workbook</h2><p>{e(ex)}</p><a class="btn" href="/admin">Back</a></div>',u),400)
+   return self.red('/admin/demographics/preview')
+  f=self.form();c=dbc()
   if p=='/setup':
    if c.execute('select count(*) from users').fetchone()[0]:c.close();return self.red('/login')
    c.execute('insert into users(name,email,password,role) values(?,?,?,?)',(f['name'],f['email'].lower(),hp(f['password']),'admin'));c.commit();c.close();return self.red('/login')
@@ -134,6 +247,14 @@ class H(BaseHTTPRequestHandler):
    self.send_header('Set-Cookie',f'egsid={sid}; Path=/; HttpOnly; SameSite=Lax{secure}');self.end_headers();return
   u=self.need()
   if not u:c.close();return
+  if p=='/admin/demographics/confirm' and u['role']=='admin':
+   pending=os.path.join(DATA_DIR,'demographics_pending.json')
+   if os.path.exists(pending):
+    hist=os.path.join(DATA_DIR,'demographics_history');os.makedirs(hist,exist_ok=True)
+    if os.path.exists(DEMO_FILE):shutil.copy2(DEMO_FILE,os.path.join(hist,'demographics_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'.json'))
+    else:shutil.copy2(DEMO_SOURCE,os.path.join(hist,'demographics_initial_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'.json'))
+    os.replace(pending,DEMO_FILE);global DEMO;DEMO=load_demo()
+   c.close();return self.red('/demographics')
   if p=='/session':
    s=c.execute('select * from sessions where id=?',(f.get('id'),)).fetchone()
    if not s or (u['role']=='coach' and s['coach']!=(u['coach_name'] or u['name'])):c.close();return self.out('Forbidden',403)
