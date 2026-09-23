@@ -120,36 +120,63 @@ def parse_demographics_xlsx(path):
    d[k]=num(v)
   return d
  # Player-name worksheets: import only player name and school.
+ # Discover sheets by their headers, not by worksheet name, so tabs such as
+ # "U11 Players" or a default Excel name such as "Sheet10" are supported.
  # Deliberately ignore DOB, parent/guardian, phone, address and email fields.
  players_by_age={}
  for sheet_name in names:
-  if not clean_name(sheet_name).startswith('PLAYERS NAMES BY AGE GROUP'):
-   continue
   pws=wb[sheet_name]
-  # Determine age group from the worksheet title/content (e.g. UNDER 12 -> U12).
-  probe=' '.join(str(v or '') for row in pws.iter_rows(min_row=1,max_row=6,max_col=10,values_only=True) for v in row)
-  m=re.search(r'(?i)UNDER\s*(\d{1,2})',probe) or re.search(r'(?i)\bU\s*(\d{1,2})\b',sheet_name)
-  if not m:
+  header_row=None;name_col=None;school_col=None;dob_col=None
+  for r in range(1,min(11,(pws.max_row or 10)+1)):
+   row_headers={}
+   for c in range(1,min(21,(pws.max_column or 20)+1)):
+    h=clean_name(pws.cell(r,c).value)
+    row_headers[h]=c
+   if 'PLAYER NAME' in row_headers and 'SCHOOL' in row_headers:
+    header_row=r;name_col=row_headers['PLAYER NAME'];school_col=row_headers['SCHOOL'];dob_col=row_headers.get('DATE OF BIRTH');break
+  if not (header_row and name_col and school_col):
+   continue
+  # First prefer an explicit Uxx / UNDER xx marker in the title or top rows.
+  probe=sheet_name+' '+ ' '.join(str(v or '') for row in pws.iter_rows(min_row=1,max_row=min(6,pws.max_row or 6),max_col=min(10,pws.max_column or 10),values_only=True) for v in row)
+  m=re.search(r'(?i)UNDER\s*(\d{1,2})',probe) or re.search(r'(?i)\bU\s*(\d{1,2})\b',probe)
+  group=('U'+str(int(m.group(1)))) if m else None
+  # If the sheet has a generic name, infer the group from DOB birth years and
+  # the latest populated membership year (e.g. 2026 - 2015 = U11).
+  if not group and dob_col:
+   birth_years=[]
+   for row in pws.iter_rows(min_row=header_row+1,max_col=dob_col,values_only=True):
+    v=row[dob_col-1]
+    if not v: continue
+    y=None
+    if hasattr(v,'year'): y=v.year
+    else:
+     mm=re.search(r'(19|20)\d{2}',str(v))
+     if mm: y=int(mm.group(0))
+    if y: birth_years.append(y)
+   if birth_years:
+    from collections import Counter
+    birth_year=Counter(birth_years).most_common(1)[0][0]
+    # Growth Year on Year is the authoritative programme year where available.
+    try:
+     gws=find_sheet('Growth Year on Year');years=[]
+     for rr in gws.iter_rows(min_row=2,max_col=2,values_only=True):
+      try:
+       yy=int(float(rr[0])); total=rr[1]
+       if 2000 <= yy <= 2100 and total is not None and str(total).strip(): years.append(yy)
+      except (TypeError,ValueError): pass
+     ref_year=max(years) if years else datetime.now().year
+    except Exception:
+     ref_year=datetime.now().year
+    inferred=ref_year-birth_year
+    if 4 <= inferred <= 18: group='U'+str(inferred)
+  if not group:
    warnings.append(f'Could not determine age group for player worksheet: {sheet_name}')
    continue
-  group='U'+str(int(m.group(1)))
-  # Locate PLAYER NAME and SCHOOL columns from the header row.
-  header_row=None;name_col=None;school_col=None
-  for r in range(1,11):
-   for c in range(1,21):
-    h=clean_name(pws.cell(r,c).value)
-    if h=='PLAYER NAME': name_col=c;header_row=r
-    if h=='SCHOOL': school_col=c
-   if name_col and school_col: break
-  if not (header_row and name_col and school_col):
-   warnings.append(f'Missing PLAYER NAME or SCHOOL column in {sheet_name}')
-   continue
   rows=[]
-  for r,row in enumerate(pws.iter_rows(min_row=header_row+1,max_col=max(name_col,school_col),values_only=True),header_row+1):
+  for row in pws.iter_rows(min_row=header_row+1,max_col=max(name_col,school_col),values_only=True):
    player=' '.join(str(row[name_col-1] or '').strip().split())
    school=' '.join(str(row[school_col-1] or '').strip().split())
    if not player: continue
-   # Skip section labels accidentally found in the name column.
    if clean_name(player).startswith('UNDER '): continue
    rows.append({'name':player,'school':school})
   if rows: players_by_age[group]=rows
