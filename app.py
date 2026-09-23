@@ -156,17 +156,22 @@ class H(BaseHTTPRequestHandler):
  def red(self,x):self.send_response(303);self.send_header('Location',x);self.end_headers()
  def form(self):
   n=int(self.headers.get('Content-Length','0'));q=parse_qs(self.rfile.read(n).decode());return {k:(v if k=='ids' else v[-1]) for k,v in q.items()}
- def upload_file(self):
+ def upload_file(self, field_name=None):
   n=int(self.headers.get('Content-Length','0'));raw=self.rfile.read(n);ct=self.headers.get('Content-Type','')
-  m=re.search(r'boundary=(?:\"([^\"]+)\"|([^;]+))',ct);
+  m=re.search(r'boundary=(?:\"([^\"]+)\"|([^;]+))',ct)
   if not m:return None,None
-  boundary=(m.group(1) or m.group(2)).encode();parts=raw.split(b'--'+boundary)
+  boundary=(m.group(1) or m.group(2)).strip().encode();parts=raw.split(b'--'+boundary)
+  wanted=(('name="'+field_name+'"').encode() if field_name else None)
   for part in parts:
-   if b'name="demographics_file"' in part and b'filename=' in part:
-    head,sep,body=part.partition(b'\r\n\r\n')
-    if not sep:continue
-    fm=re.search(br'filename="([^"]*)"',head);name=fm.group(1).decode(errors='ignore') if fm else 'upload.xlsx'
-    return name,body.rstrip(b'\r\n-')
+   head,sep,body=part.partition(b'\r\n\r\n')
+   if not sep or b'filename=' not in head:continue
+   if wanted and wanted not in head:continue
+   fm=re.search(br'filename="([^"]*)"',head)
+   name=fm.group(1).decode('utf-8',errors='ignore') if fm else 'upload.xlsx'
+   # A multipart part ends with one CRLF before the next boundary. Remove only
+   # that framing CRLF; rstrip() can corrupt the binary tail of an .xlsx ZIP.
+   if body.endswith(b'\r\n'):body=body[:-2]
+   return os.path.basename(name.replace('\\','/')),body
   return None,None
  def user(self):
   z=SimpleCookie(self.headers.get('Cookie'));sid=z.get('egsid');uid=SESS.get(sid.value) if sid else None
@@ -283,7 +288,7 @@ class H(BaseHTTPRequestHandler):
   if p=='/admin/coaching-team/upload':
    u=self.need()
    if not u:return self.out('Forbidden',403)
-   name,data=self.upload_file()
+   name,data=self.upload_file('coaching_file')
    if not data or not name.lower().endswith('.xlsx'):return self.out(page('Upload error','<div class="card"><h2>Please choose a valid .xlsx file.</h2><a class="btn" href="/admin">Back</a></div>',u),400)
    tmp=os.path.join(DATA_DIR,'coaching_team_upload.xlsx')
    try:
@@ -293,7 +298,7 @@ class H(BaseHTTPRequestHandler):
   if p=='/admin/demographics/preview':
    u=self.need()
    if not u:return self.out('Forbidden',403)
-   name,data=self.upload_file()
+   name,data=self.upload_file('demographics_file')
    if not data or not name.lower().endswith('.xlsx'):return self.out(page('Upload error','<div class="card"><h2>Please choose a valid .xlsx file.</h2><a class="btn" href="/admin">Back</a></div>',u),400)
    tmp=os.path.join(DATA_DIR,'demographics_upload.xlsx')
    try:
