@@ -26,6 +26,7 @@ def load_demo():
  d.setdefault('age_schools', {})
  d.setdefault('games', {})
  d.setdefault('growth', {})
+ d.setdefault('players_by_age', {})
  return d
 DEMO=load_demo()
 COACH_FILE=os.path.join(DATA_DIR,"coaching_team_current.json")
@@ -118,6 +119,41 @@ def parse_demographics_xlsx(path):
    if v is None or str(v).strip()=='':continue
    d[k]=num(v)
   return d
+ # Player-name worksheets: import only player name and school.
+ # Deliberately ignore DOB, parent/guardian, phone, address and email fields.
+ players_by_age={}
+ for sheet_name in names:
+  if not clean_name(sheet_name).startswith('PLAYERS NAMES BY AGE GROUP'):
+   continue
+  pws=wb[sheet_name]
+  # Determine age group from the worksheet title/content (e.g. UNDER 12 -> U12).
+  probe=' '.join(str(v or '') for row in pws.iter_rows(min_row=1,max_row=6,max_col=10,values_only=True) for v in row)
+  m=re.search(r'(?i)UNDER\s*(\d{1,2})',probe) or re.search(r'(?i)\bU\s*(\d{1,2})\b',sheet_name)
+  if not m:
+   warnings.append(f'Could not determine age group for player worksheet: {sheet_name}')
+   continue
+  group='U'+str(int(m.group(1)))
+  # Locate PLAYER NAME and SCHOOL columns from the header row.
+  header_row=None;name_col=None;school_col=None
+  for r in range(1,11):
+   for c in range(1,21):
+    h=clean_name(pws.cell(r,c).value)
+    if h=='PLAYER NAME': name_col=c;header_row=r
+    if h=='SCHOOL': school_col=c
+   if name_col and school_col: break
+  if not (header_row and name_col and school_col):
+   warnings.append(f'Missing PLAYER NAME or SCHOOL column in {sheet_name}')
+   continue
+  rows=[]
+  for r,row in enumerate(pws.iter_rows(min_row=header_row+1,max_col=max(name_col,school_col),values_only=True),header_row+1):
+   player=' '.join(str(row[name_col-1] or '').strip().split())
+   school=' '.join(str(row[school_col-1] or '').strip().split())
+   if not player: continue
+   # Skip section labels accidentally found in the name column.
+   if clean_name(player).startswith('UNDER '): continue
+   rows.append({'name':player,'school':school})
+  if rows: players_by_age[group]=rows
+
  games=two_col('Games Played By Age Group')
  # Growth sheet uses Excel numeric years (e.g. 2023.0). Parse them as years
  # instead of passing them through clean_name(), which would produce '2023.0'.
@@ -135,7 +171,7 @@ def parse_demographics_xlsx(path):
  total_players=growth.get(max(growth.keys(),key=int),sum(age_totals.values())) if growth else sum(age_totals.values())
  if sum(areas.values())!=total_players:warnings.append(f'Parish catchment sums to {sum(areas.values())}, latest player total is {total_players}')
  if sum(schools.values())!=total_players:warnings.append(f'School catchment sums to {sum(schools.values())}, latest player total is {total_players}')
- return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
+ return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'players_by_age':players_by_age,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
 
 def dbc(): c=sqlite3.connect(DB);c.row_factory=sqlite3.Row;return c
 def hp(p,s=None):
@@ -227,7 +263,7 @@ class H(BaseHTTPRequestHandler):
    if g not in DEMO['age_totals']:return self.red('/demographics')
    def bars2(data):
     mx=max([int(v) for v in data.values()] or [1]);return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
-   total=int(DEMO['age_totals'][g]);b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div><div class="grid"><div class="card"><h3>Residential catchment</h3>{bars2(DEMO['age_areas'][g])}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO['age_schools'][g])}</div></div><div class="card"><p class="muted">Figures are imported from the updated Eastern Gaels demographics workbook. Zero-value categories are retained so the source structure remains visible.</p></div>''';return self.out(page(g+' Demographics',b,u))
+   players=DEMO.get('players_by_age',{}).get(g,[]);prows=''.join(f'<tr><td>{e(x.get("name",""))}</td><td>{e(x.get("school",""))}</td></tr>' for x in players);plist=(f'<div class="card"><h3>{e(g)} Players</h3><p class="muted">{len(players)} player names imported. Only player name and school are stored/displayed.</p><div class="tw"><table><tr><th>Player Name</th><th>School</th></tr>{prows}</table></div></div>' if players else '<div class="card"><h3>Players</h3><p class="muted">No player-name list has been imported for this age group yet.</p></div>');total=int(DEMO['age_totals'][g]);b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div>{plist}<div class="grid"><div class="card"><h3>Residential catchment</h3>{bars2(DEMO['age_areas'][g])}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO['age_schools'][g])}</div></div><div class="card"><p class="muted">Figures are imported from the updated Eastern Gaels demographics workbook. Zero-value categories are retained so the source structure remains visible.</p></div>''';return self.out(page(g+' Demographics',b,u))
   if path=='/coaching-team':
    c.close();coaches=list(COACHING.get('coaches',{}).values());teams=COACHING.get('teams',{});buckets={'expired':0,'urgent':0,'warning':0,'unknown':0,'unknown_expiry':0,'not_vetted':0,'valid':0}
    for x in coaches:buckets[expiry_bucket(x)[0]]+=1
