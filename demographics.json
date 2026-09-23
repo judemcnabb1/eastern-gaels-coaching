@@ -1,0 +1,201 @@
+{
+  "age_totals": {
+    "U12": 11,
+    "U11": 8,
+    "U10": 10,
+    "U9": 10,
+    "U8": 15,
+    "U7": 3,
+    "U6": 11,
+    "U5": 3
+  },
+  "age_areas": {
+    "U12": {
+      "BETTYSTOWN": 3,
+      "LAYTOWN": 3,
+      "MORNINGTON": 2,
+      "DONACARNEY": 2,
+      "DUBLIN ROAD": 0,
+      "UNKNOWN ADDRESS": 1
+    },
+    "U11": {
+      "BETTYSTOWN": 3,
+      "LAYTOWN": 1,
+      "MORNINGTON": 2,
+      "DONACARNEY": 0,
+      "DUBLIN ROAD": 2,
+      "UNKNOWN ADDRESS": 0
+    },
+    "U10": {
+      "BETTYSTOWN": 4,
+      "LAYTOWN": 0,
+      "MORNINGTON": 3,
+      "DONACARNEY": 1,
+      "DUBLIN ROAD": 1,
+      "UNKNOWN ADDRESS": 1
+    },
+    "U9": {
+      "BETTYSTOWN": 5,
+      "LAYTOWN": 2,
+      "MORNINGTON": 1,
+      "DONACARNEY": 2,
+      "DUBLIN ROAD": 0,
+      "UNKNOWN ADDRESS": 0
+    },
+    "U8": {
+      "BETTYSTOWN": 4,
+      "LAYTOWN": 4,
+      "MORNINGTON": 3,
+      "DONACARNEY": 1,
+      "DUBLIN ROAD": 2,
+      "UNKNOWN ADDRESS": 1
+    },
+    "U7": {
+      "BETTYSTOWN": 2,
+      "LAYTOWN": 0,
+      "MORNINGTON": 1,
+      "DONACARNEY": 0,
+      "DUBLIN ROAD": 0,
+      "UNKNOWN ADDRESS": 0
+    },
+    "U6": {
+      "BETTYSTOWN": 7,
+      "LAYTOWN": 1,
+      "MORNINGTON": 1,
+      "DONACARNEY": 1,
+      "DUBLIN ROAD": 1,
+      "UNKNOWN ADDRESS": 0
+    },
+    "U5": {
+      "BETTYSTOWN": 2,
+      "LAYTOWN": 0,
+      "MORNINGTON": 1,
+      "DONACARNEY": 0,
+      "DUBLIN ROAD": 0,
+      "UNKNOWN ADDRESS": 0
+    }
+  },
+  "age_schools": {
+    "U12": {
+      "SON": 0,
+      "LE CHEILE": 0,
+      "RNM BOYS": 0,
+      "RNM GIRLS": 0,
+      "UNKNOWN": 0,
+      "GAELSCOIL": 0,
+      "SPN": 11
+    },
+    "U11": {
+      "SON": 0,
+      "LE CHEILE": 0,
+      "RNM BOYS": 1,
+      "RNM GIRLS": 3,
+      "UNKNOWN": 0,
+      "GAELSCOIL": 0,
+      "SPN": 4
+    },
+    "U10": {
+      "SON": 0,
+      "LE CHEILE": 0,
+      "RNM BOYS": 2,
+      "RNM GIRLS": 3,
+      "UNKNOWN": 1,
+      "GAELSCOIL": 0,
+      "SPN": 4
+    },
+    "U9": {
+      "SON": 8,
+      "LE CHEILE": 2,
+      "RNM BOYS": 0,
+      "RNM GIRLS": 0,
+      "UNKNOWN": 0,
+      "GAELSCOIL": 0,
+      "SPN": 0
+    },
+    "U8": {
+      "SON": 11,
+      "LE CHEILE": 1,
+      "RNM BOYS": 0,
+      "RNM GIRLS": 3,
+      "UNKNOWN": 0,
+      "GAELSCOIL": 0,
+      "SPN": 0
+    },
+    "U7": {
+      "SON": 2,
+      "LE CHEILE": 0,
+      "RNM BOYS": 0,
+      "RNM GIRLS": 0,
+      "UNKNOWN": 1,
+      "GAELSCOIL": 0,
+      "SPN": 0
+    },
+    "U6": {
+      "SON": 11,
+      "LE CHEILE": 0,
+      "RNM BOYS": 0,
+      "RNM GIRLS": 0,
+      "UNKNOWN": 0,
+      "GAELSCOIL": 0,
+      "SPN": 0
+    },
+    "U5": {
+      "SON": 2,
+      "LE CHEILE": 0,
+      "RNM BOYS": 0,
+      "RNM GIRLS": 0,
+      "UNKNOWN": 1,
+      "GAELSCOIL": 0,
+      "SPN": 0
+    }
+  },
+  "games": {
+    "BOYS U12": 14,
+    "BOYS U10": 14,
+    "BOYS U8": 9,
+    "U12 GIRLS": 3,
+    "U9 GIRLS": 1
+  },
+  "growth": {
+    "2023": 6,
+    "2024": 18,
+    "2025": 31,
+    "2026": 71
+  },
+  "areas": {
+    "BETTYSTOWN": 30,
+    "LAYTOWN": 11,
+    "MORNINGTON": 14,
+    "DONACARNEY": 7,
+    "DUBLIN ROAD": 6,
+    "UNKNOWN ADDRESS": 3
+  },
+  "schools": {
+    "SON": 34,
+    "LE CHEILE": 3,
+    "RNM BOYS": 3,
+    "RNM GIRLS": 9,
+    "UNKNOWN": 3,
+    "GAELSCOIL": 0,
+    "SPN": 19
+  },
+  "catchment": {
+    "BETTYSTOWN": 30,
+    "LAYTOWN": 11,
+    "MORNINGTON": 14,
+    "DONACARNEY": 7,
+    "DUBLIN ROAD": 6,
+    "UNKNOWN ADDRESS": 3
+  },
+  "school_totals": {
+    "SON": 34,
+    "LE CHEILE": 3,
+    "RNM BOYS": 3,
+    "RNM GIRLS": 9,
+    "UNKNOWN": 3,
+    "GAELSCOIL": 0,
+    "SPN": 19
+  },
+  "warnings": [],
+  "imported_at": "2026-09-23T12:33:51"
+}
