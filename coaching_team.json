@@ -1,0 +1,166 @@
+{
+  "coaches": {
+    "JUDE MCNABB": {
+      "name": "Jude McNabb",
+      "garda_status": "Expires September 2029",
+      "garda_expiry": "2029-09-30",
+      "safeguarding": "Unknown",
+      "qualification": "Level 1",
+      "teams": [
+        "U12 BOYS",
+        "U10 BOYS",
+        "U8 BOYS"
+      ]
+    },
+    "TOM MCLOUGHLIN": {
+      "name": "Tom McLoughlin",
+      "garda_status": "Expires August 2029",
+      "garda_expiry": "2029-08-31",
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": [
+        "U12 BOYS",
+        "U10 BOYS",
+        "U8 BOYS"
+      ]
+    },
+    "BRENDAN QUIGLEY": {
+      "name": "Brendan Quigley",
+      "garda_status": "Unknown",
+      "garda_expiry": null,
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": [
+        "NURSERY"
+      ]
+    },
+    "MICK MOLLOY": {
+      "name": "Mick Molloy",
+      "garda_status": "Unknown",
+      "garda_expiry": null,
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": []
+    },
+    "KATE SULLIVAN": {
+      "name": "Kate Sullivan",
+      "garda_status": "Unknown",
+      "garda_expiry": null,
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": [
+        "U12 GIRLS",
+        "U9 GIRLS"
+      ]
+    },
+    "KATE KELLY": {
+      "name": "Kate Kelly",
+      "garda_status": "Unknown",
+      "garda_expiry": null,
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": [
+        "U12 GIRLS",
+        "U9 GIRLS"
+      ]
+    },
+    "DAVID BALL": {
+      "name": "David Ball",
+      "garda_status": "Unknown",
+      "garda_expiry": null,
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": [
+        "NURSERY"
+      ]
+    },
+    "ALAN CALLINAN": {
+      "name": "Alan Callinan",
+      "garda_status": "Unknown",
+      "garda_expiry": null,
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": []
+    },
+    "EOIN KINNEAR": {
+      "name": "Eoin Kinnear",
+      "garda_status": "Unknown",
+      "garda_expiry": null,
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": [
+        "U12 BOYS"
+      ]
+    },
+    "KELLY ANN BUCHANAN": {
+      "name": "Kelly Ann Buchanan",
+      "garda_status": "Unknown",
+      "garda_expiry": null,
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": [
+        "U12 GIRLS",
+        "U9 GIRLS"
+      ]
+    },
+    "CAOIMHE HORAN": {
+      "name": "Caoimhe Horan",
+      "garda_status": "Unknown",
+      "garda_expiry": null,
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": [
+        "U12 GIRLS",
+        "U9 GIRLS"
+      ]
+    },
+    "NICOLA MAHER": {
+      "name": "Nicola Maher",
+      "garda_status": "Unknown",
+      "garda_expiry": null,
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": []
+    },
+    "PEARSE GILROY": {
+      "name": "Pearse Gilroy",
+      "garda_status": "Unknown",
+      "garda_expiry": null,
+      "safeguarding": "Unknown",
+      "qualification": "Unknown",
+      "teams": []
+    }
+  },
+  "teams": {
+    "U12 BOYS": [
+      "Jude McNabb",
+      "Tom McLoughlin",
+      "Eoin Kinnear"
+    ],
+    "U12 GIRLS": [
+      "Caoimhe Horan",
+      "Kate Sullivan",
+      "Kate Kelly",
+      "Kelly Ann Buchanan"
+    ],
+    "U10 BOYS": [
+      "Jude McNabb",
+      "Tom McLoughlin"
+    ],
+    "U9 GIRLS": [
+      "Caoimhe Horan",
+      "Kate Sullivan",
+      "Kate Kelly",
+      "Kelly Ann Buchanan"
+    ],
+    "U8 BOYS": [
+      "Jude McNabb",
+      "Tom McLoughlin"
+    ],
+    "NURSERY": [
+      "Brendan Quigley",
+      "David Ball"
+    ]
+  },
+  "imported_at": "2026-09-23T15:16:48"
+}
