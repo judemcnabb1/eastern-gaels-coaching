@@ -1,7 +1,7 @@
 {
   "age_totals": {
     "U12": 11,
-    "U11": 8,
+    "U11": 9,
     "U10": 10,
     "U9": 10,
     "U8": 15,
@@ -150,17 +150,17 @@
     }
   },
   "games": {
-    "BOYS U12": 14,
+    "BOYS U12": 15,
     "BOYS U10": 14,
     "BOYS U8": 9,
-    "U12 GIRLS": 3,
-    "U9 GIRLS": 1
+    "U12 GIRLS": 4,
+    "U9 GIRLS": 2
   },
   "growth": {
     "2023": 6,
     "2024": 18,
     "2025": 31,
-    "2026": 71
+    "2026": 72
   },
   "areas": {
     "BETTYSTOWN": 30,
@@ -196,6 +196,353 @@
     "GAELSCOIL": 0,
     "SPN": 19
   },
-  "warnings": [],
-  "imported_at": "2026-09-23T12:33:51"
+  "players_by_age": {
+    "U12": [
+      {
+        "name": "EABHA O'NEILL",
+        "school": "SPN"
+      },
+      {
+        "name": "SURINE HARRIS",
+        "school": "SPN"
+      },
+      {
+        "name": "TOMEK KOWALSKI",
+        "school": "SPN"
+      },
+      {
+        "name": "LIAM WILKINSON",
+        "school": "SPN"
+      },
+      {
+        "name": "OLIVIA LAZAR",
+        "school": "SPN"
+      },
+      {
+        "name": "DANNY MCEVOY",
+        "school": "SPN"
+      },
+      {
+        "name": "EMILIA CLARKE",
+        "school": "SPN"
+      },
+      {
+        "name": "LOGAN NKOMO",
+        "school": "SPN"
+      },
+      {
+        "name": "ANABELLA",
+        "school": "SPN"
+      },
+      {
+        "name": "ELENA CIGOLEA",
+        "school": "SPN"
+      },
+      {
+        "name": "IVAN OKISHEV",
+        "school": "SPN"
+      }
+    ],
+    "U11": [
+      {
+        "name": "JACK BOYLE",
+        "school": "SPN"
+      },
+      {
+        "name": "CLARE MCCLOSKEY",
+        "school": "DGS"
+      },
+      {
+        "name": "LILY O'NEILL",
+        "school": "DGS"
+      },
+      {
+        "name": "CAITLIN MURDOCH",
+        "school": "SPN"
+      },
+      {
+        "name": "KEITH MAGEE",
+        "school": "SPN"
+      },
+      {
+        "name": "ROSIE CANAVAN",
+        "school": "DGS"
+      },
+      {
+        "name": "IANIS ARDELEAN",
+        "school": "SPN"
+      },
+      {
+        "name": "LEO BUTTLE",
+        "school": "ST MARYS"
+      },
+      {
+        "name": "JOSH LEKHUTILE",
+        "school": "DBS"
+      }
+    ],
+    "U10": [
+      {
+        "name": "ROSE KEATING",
+        "school": "DGS"
+      },
+      {
+        "name": "MATAS MARTIN",
+        "school": "DBS"
+      },
+      {
+        "name": "ERIN MAHER",
+        "school": "DGS"
+      },
+      {
+        "name": "TOM HART",
+        "school": "SPN"
+      },
+      {
+        "name": "KATE GORMLEY",
+        "school": "DGS"
+      },
+      {
+        "name": "LACHLIN MCDONNELL-ROSS",
+        "school": "SPN"
+      },
+      {
+        "name": "TAPIWANASHE SAJANGA",
+        "school": "DBS"
+      },
+      {
+        "name": "DAVID WILKINSON",
+        "school": "SPN"
+      },
+      {
+        "name": "MIA O'BRIEN",
+        "school": "SPN"
+      },
+      {
+        "name": "ROISIN HOLMES",
+        "school": ""
+      }
+    ],
+    "U9": [
+      {
+        "name": "LOGAN KELLY",
+        "school": "SON"
+      },
+      {
+        "name": "MIKEY CLARKE",
+        "school": "SON"
+      },
+      {
+        "name": "CALLUM MURDOCH",
+        "school": "SON"
+      },
+      {
+        "name": "ROWAN BRADY",
+        "school": "LE CHEILE"
+      },
+      {
+        "name": "ELARA BRADY",
+        "school": "LE CHEILE"
+      },
+      {
+        "name": "ISABELLE SULLIVAN",
+        "school": "SON"
+      },
+      {
+        "name": "HARPER MCHUGH",
+        "school": "SON"
+      },
+      {
+        "name": "ALEXSUS NICHOLSON-NEL",
+        "school": "SON"
+      },
+      {
+        "name": "JOANNE NUGBASORO",
+        "school": "SON"
+      },
+      {
+        "name": "DECSON ZHU",
+        "school": "SON"
+      }
+    ],
+    "U8": [
+      {
+        "name": "RILEY CARROLL",
+        "school": "SON"
+      },
+      {
+        "name": "HUNTER MCCARTHY",
+        "school": "SON"
+      },
+      {
+        "name": "HORDII BARANOVSKYI",
+        "school": "SON"
+      },
+      {
+        "name": "ELLA-MAY MCGUINNESS",
+        "school": "SON"
+      },
+      {
+        "name": "FREYA SCURRY",
+        "school": "DGS"
+      },
+      {
+        "name": "INDRA ENEBISH",
+        "school": "LE CHEILE"
+      },
+      {
+        "name": "KYLE LYNCH",
+        "school": "SON"
+      },
+      {
+        "name": "GLEB POLOSIN",
+        "school": "SON"
+      },
+      {
+        "name": "NICHOLAS ARDELEAN",
+        "school": "SON"
+      },
+      {
+        "name": "ARLO BROWNING",
+        "school": "SON"
+      },
+      {
+        "name": "LILLY O'GORMON",
+        "school": "DGS"
+      },
+      {
+        "name": "JOHN-PATRICK FARRELL-WALSHE",
+        "school": "SON"
+      },
+      {
+        "name": "LUCY WATSON",
+        "school": "DGS"
+      },
+      {
+        "name": "DANIELLE WHELAN",
+        "school": "SON"
+      },
+      {
+        "name": "ZAK BALFE",
+        "school": "SON"
+      }
+    ],
+    "U7": [
+      {
+        "name": "KRZYSZTOF BOSIUK",
+        "school": "SON"
+      },
+      {
+        "name": "LLEYTON SHERIDAN",
+        "school": "SON"
+      },
+      {
+        "name": "KEAGAN ROONEY",
+        "school": "ST JOHNS DROGHEDA"
+      }
+    ],
+    "U6": [
+      {
+        "name": "TAWANANYASHA HANDINA",
+        "school": "SON"
+      },
+      {
+        "name": "COLM MCGUINESS",
+        "school": "SON"
+      },
+      {
+        "name": "ALEX DUFFY",
+        "school": "SON"
+      },
+      {
+        "name": "GRACE DUNNE",
+        "school": "SON"
+      },
+      {
+        "name": "MYLO BROWNING",
+        "school": "SON"
+      },
+      {
+        "name": "TJ HENRY",
+        "school": "SON"
+      },
+      {
+        "name": "KAI DORAN CHAPMAN",
+        "school": "SON"
+      },
+      {
+        "name": "MARCIN MACHAJ",
+        "school": "SON"
+      },
+      {
+        "name": "ZACH BARNES",
+        "school": "SON"
+      },
+      {
+        "name": "RIAN DULLAGHAN",
+        "school": "SON"
+      },
+      {
+        "name": "JAMIE WARD",
+        "school": "SON"
+      }
+    ],
+    "U5": [
+      {
+        "name": "MARCELO BORGES-GOUVELA",
+        "school": "SON"
+      },
+      {
+        "name": "SEAN BOSIUK",
+        "school": "SON"
+      },
+      {
+        "name": "KIA ROONEY",
+        "school": "ST PAULS DROGHEDA"
+      }
+    ]
+  },
+  "upcoming_events": [
+    {
+      "event": "U12 Boys Friendly V St Pats",
+      "venue": "St Pats",
+      "date": "02 Oct 2026",
+      "time": "18:00",
+      "sort_date": "2026-10-02"
+    },
+    {
+      "event": "U12 Girls V St Pats",
+      "venue": "St Pats, Stamullen",
+      "date": "03 Oct 2026",
+      "time": "10:30",
+      "sort_date": "2026-10-03"
+    },
+    {
+      "event": "U9 Girls V Ratoath",
+      "venue": "Ratoath",
+      "date": "03 Oct 2026",
+      "time": "11:00",
+      "sort_date": "2026-10-03"
+    },
+    {
+      "event": "Social Fundraiser- Table Quiz",
+      "venue": "Village Hotel",
+      "date": "09 Oct 2026",
+      "time": "18:45",
+      "sort_date": "2026-10-09"
+    },
+    {
+      "event": "U8 Boys Friendly V Naomh Martin",
+      "venue": "Naomh Martin",
+      "date": "11 Oct 2026",
+      "time": "12:00",
+      "sort_date": "2026-10-11"
+    }
+  ],
+  "warnings": [
+    "U11 summary total is 8; player tab contains 9. Using player-tab count.",
+    "Parish catchment sums to 71, latest player total is 72",
+    "School catchment sums to 71, latest player total is 72"
+  ],
+  "imported_at": "2026-09-27T18:20:06"
 }

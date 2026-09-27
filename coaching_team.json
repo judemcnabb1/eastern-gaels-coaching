@@ -2,10 +2,11 @@
   "coaches": {
     "JUDE MCNABB": {
       "name": "Jude McNabb",
-      "garda_status": "Expires September 2029",
-      "garda_expiry": "2029-09-30",
-      "safeguarding": "Unknown",
-      "qualification": "Level 1",
+      "garda_vetted": "Yes",
+      "garda_expiry": null,
+      "garda_expiry_text": "Expires Sept 2029",
+      "safeguarding": "Yes",
+      "qualification": "Award 1",
       "teams": [
         "U12 BOYS",
         "U10 BOYS",
@@ -14,9 +15,10 @@
     },
     "TOM MCLOUGHLIN": {
       "name": "Tom McLoughlin",
-      "garda_status": "Expires August 2029",
-      "garda_expiry": "2029-08-31",
-      "safeguarding": "Unknown",
+      "garda_vetted": "Yes",
+      "garda_expiry": null,
+      "garda_expiry_text": "Expires Mar 2029",
+      "safeguarding": "Yes",
       "qualification": "Unknown",
       "teams": [
         "U12 BOYS",
@@ -26,9 +28,10 @@
     },
     "BRENDAN QUIGLEY": {
       "name": "Brendan Quigley",
-      "garda_status": "Unknown",
+      "garda_vetted": "No",
       "garda_expiry": null,
-      "safeguarding": "Unknown",
+      "garda_expiry_text": "Expired",
+      "safeguarding": "No",
       "qualification": "Unknown",
       "teams": [
         "NURSERY"
@@ -36,16 +39,18 @@
     },
     "MICK MOLLOY": {
       "name": "Mick Molloy",
-      "garda_status": "Unknown",
+      "garda_vetted": "No",
       "garda_expiry": null,
+      "garda_expiry_text": "Expired",
       "safeguarding": "Unknown",
       "qualification": "Unknown",
       "teams": []
     },
     "KATE SULLIVAN": {
       "name": "Kate Sullivan",
-      "garda_status": "Unknown",
+      "garda_vetted": "No",
       "garda_expiry": null,
+      "garda_expiry_text": "Expired",
       "safeguarding": "Unknown",
       "qualification": "Unknown",
       "teams": [
@@ -55,9 +60,10 @@
     },
     "KATE KELLY": {
       "name": "Kate Kelly",
-      "garda_status": "Unknown",
+      "garda_vetted": "No",
       "garda_expiry": null,
-      "safeguarding": "Unknown",
+      "garda_expiry_text": "Expired",
+      "safeguarding": "No",
       "qualification": "Unknown",
       "teams": [
         "U12 GIRLS",
@@ -66,9 +72,10 @@
     },
     "DAVID BALL": {
       "name": "David Ball",
-      "garda_status": "Unknown",
+      "garda_vetted": "No",
       "garda_expiry": null,
-      "safeguarding": "Unknown",
+      "garda_expiry_text": "Expired",
+      "safeguarding": "No",
       "qualification": "Unknown",
       "teams": [
         "NURSERY"
@@ -76,27 +83,28 @@
     },
     "ALAN CALLINAN": {
       "name": "Alan Callinan",
-      "garda_status": "Unknown",
+      "garda_vetted": "No",
       "garda_expiry": null,
+      "garda_expiry_text": "Expired",
       "safeguarding": "Unknown",
       "qualification": "Unknown",
       "teams": []
     },
     "EOIN KINNEAR": {
       "name": "Eoin Kinnear",
-      "garda_status": "Unknown",
+      "garda_vetted": "No",
       "garda_expiry": null,
-      "safeguarding": "Unknown",
+      "garda_expiry_text": "Expired",
+      "safeguarding": "No",
       "qualification": "Unknown",
-      "teams": [
-        "U12 BOYS"
-      ]
+      "teams": []
     },
     "KELLY ANN BUCHANAN": {
       "name": "Kelly Ann Buchanan",
-      "garda_status": "Unknown",
+      "garda_vetted": "No",
       "garda_expiry": null,
-      "safeguarding": "Unknown",
+      "garda_expiry_text": "Expired",
+      "safeguarding": "No",
       "qualification": "Unknown",
       "teams": [
         "U12 GIRLS",
@@ -105,9 +113,10 @@
     },
     "CAOIMHE HORAN": {
       "name": "Caoimhe Horan",
-      "garda_status": "Unknown",
+      "garda_vetted": "No",
       "garda_expiry": null,
-      "safeguarding": "Unknown",
+      "garda_expiry_text": "Expired",
+      "safeguarding": "No",
       "qualification": "Unknown",
       "teams": [
         "U12 GIRLS",
@@ -116,26 +125,72 @@
     },
     "NICOLA MAHER": {
       "name": "Nicola Maher",
-      "garda_status": "Unknown",
+      "garda_vetted": "No",
       "garda_expiry": null,
-      "safeguarding": "Unknown",
+      "garda_expiry_text": "Expired",
+      "safeguarding": "No",
       "qualification": "Unknown",
       "teams": []
     },
     "PEARSE GILROY": {
       "name": "Pearse Gilroy",
-      "garda_status": "Unknown",
+      "garda_vetted": "No",
       "garda_expiry": null,
-      "safeguarding": "Unknown",
+      "garda_expiry_text": "Expired",
+      "safeguarding": "No",
       "qualification": "Unknown",
+      "teams": []
+    },
+    "KEVIN KEANE": {
+      "name": "Kevin Keane",
+      "garda_vetted": "No",
+      "garda_expiry": null,
+      "garda_expiry_text": "Expired",
+      "safeguarding": "Unknown",
+      "qualification": "Foundation Level",
+      "teams": []
+    },
+    "DARREN O'SULLIVAN": {
+      "name": "Darren O'Sullivan",
+      "garda_vetted": "Unknown",
+      "garda_expiry": null,
+      "garda_expiry_text": "",
+      "safeguarding": "No",
+      "qualification": "Unknown",
+      "teams": []
+    },
+    "EMMA O 'SULLIVAN": {
+      "name": "Emma O 'Sullivan",
+      "garda_vetted": "Unknown",
+      "garda_expiry": null,
+      "garda_expiry_text": "",
+      "safeguarding": "No",
+      "qualification": "Unknown",
+      "teams": []
+    },
+    "KATE O'SULLIVAN": {
+      "name": "Kate O'Sullivan",
+      "garda_vetted": "Unknown",
+      "garda_expiry": null,
+      "garda_expiry_text": "",
+      "safeguarding": "No",
+      "qualification": "Unknown",
+      "teams": []
+    },
+    "TOMAS QUINN": {
+      "name": "Tomas Quinn",
+      "garda_vetted": "Unknown",
+      "garda_expiry": null,
+      "garda_expiry_text": "",
+      "safeguarding": "Unknown",
+      "qualification": "Foundation Level",
       "teams": []
     }
   },
   "teams": {
     "U12 BOYS": [
       "Jude McNabb",
-      "Tom McLoughlin",
-      "Eoin Kinnear"
+      "Tom McLoughlin"
     ],
     "U12 GIRLS": [
       "Caoimhe Horan",
@@ -162,5 +217,11 @@
       "David Ball"
     ]
   },
-  "imported_at": "2026-09-23T15:16:48"
+  "qualification_summary": {
+    "Foundation Level": 2,
+    "Award 1": 1,
+    "Award 2": 0,
+    "Award 3": 0
+  },
+  "imported_at": "2026-09-27T18:20:06"
 }
