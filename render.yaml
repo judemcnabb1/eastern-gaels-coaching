@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: eastern-gaels-v8
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python eastern_gaels_v7.py
+    healthCheckPath: /
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: ADMIN_PASSWORD
+        sync: false
+    disk:
+      name: eastern-gaels-data
+      mountPath: /var/data
+      sizeGB: 1
