@@ -589,6 +589,81 @@ td,th{{padding:6px 8px;font-size:10px}}
 .course-facts span{{padding:7px 5px;border-radius:7px;background:#f1f7f4;color:#315a4c;font-size:8px;text-align:center}}
 .course-facts b{{display:block;color:#006440;font-size:9px;margin-bottom:2px}}
 .course-preview .course-note{{font-size:8.5px;margin-bottom:8px}}
+
+/* ===== iPhone / small-screen responsive layout ===== */
+@media(max-width:600px){{
+ :root{{--side:0px}}
+ html,body{{width:100%;max-width:100%;overflow-x:hidden}}
+ body{{font-size:13px}}
+
+ .sidebar{{
+   position:relative!important;inset:auto!important;
+   width:100%!important;height:58px!important;min-height:58px!important;
+   padding:6px 8px!important;
+   display:flex!important;flex-direction:row!important;align-items:center!important;
+   background-color:#004a31!important;
+   background-image:linear-gradient(90deg,rgba(0,73,46,.96),rgba(0,54,36,.90)),url('/maiden-tower.png')!important;
+   background-position:center,center 56%!important;
+   background-size:100% 100%,cover!important;
+   box-shadow:0 3px 12px rgba(0,45,28,.16)!important;
+ }}
+ .brand{{height:46px!important;width:48px!important;min-width:48px!important;padding:0!important;border:0!important;align-items:center!important}}
+ .brand img{{width:46px!important;height:46px!important;border-radius:7px!important;object-fit:contain!important;filter:none!important}}
+ .side-nav{{
+   margin:0 0 0 6px!important;padding:0 0 2px!important;
+   display:flex!important;flex-direction:row!important;gap:3px!important;
+   overflow-x:auto!important;overflow-y:hidden!important;white-space:nowrap!important;
+   scrollbar-width:none!important;
+ }}
+ .side-nav::-webkit-scrollbar{{display:none}}
+ .side-nav a{{display:flex!important;min-width:38px!important;height:38px!important;padding:6px!important;justify-content:center!important;border-radius:8px!important}}
+ .side-nav a span,.nav-label{{display:none!important}}
+ .side-nav a i{{width:24px!important;height:24px!important;font-size:14px!important}}
+ .side-bottom,.designer-footer{{display:none!important}}
+
+ header{{
+   position:relative!important;top:auto!important;
+   margin-left:0!important;width:100%!important;height:118px!important;
+   padding:14px 14px!important;
+   background-position:center,center 54%!important;background-size:100% 100%,cover!important;
+ }}
+ .club-head strong{{font-size:24px!important;line-height:1!important}}
+ .club-head span{{font-size:11px!important;letter-spacing:2.1px!important;margin-top:5px!important}}
+ .club-head small{{display:none!important}}
+ .head-right{{align-self:flex-end!important}}
+ .head-right em{{display:none!important}}
+ .date-chip{{padding:8px 10px!important;font-size:10px!important;white-space:nowrap!important}}
+
+ main{{margin-left:0!important;width:100%!important;max-width:100%!important;padding:12px 10px 28px!important}}
+ .overview-title{{display:flex!important;align-items:flex-end!important;gap:8px!important;flex-wrap:wrap!important}}
+ .overview-title h2{{font-size:23px!important;line-height:1.05!important;margin:2px 0!important}}
+ .overview-title>span{{margin-left:auto!important;max-width:52%!important;font-size:8px!important;text-align:center!important;padding:6px 8px!important}}
+
+ .kpi-grid{{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}}
+ .kpi-grid .card{{min-width:0!important;min-height:112px!important;padding:12px 10px!important}}
+ .metric-icon{{width:38px!important;height:38px!important;margin-right:7px!important;font-size:13px!important}}
+ .kpi .stat{{font-size:27px!important}}
+ .kpi b{{font-size:11px!important;line-height:1.2!important}}
+ .kpi small{{font-size:8.5px!important;line-height:1.25!important}}
+
+ .overview-charts{{grid-template-columns:1fr!important;gap:9px!important;margin:9px 0!important}}
+ .overview-charts .card{{width:100%!important;min-width:0!important;min-height:0!important;padding:45px 10px 10px!important}}
+ .overview-charts svg{{width:100%!important;max-width:100%!important;height:auto!important;max-height:none!important}}
+ .pie-layout,.compliance-layout{{grid-template-columns:1fr!important;min-height:0!important;gap:12px!important}}
+ .chart-legend{{width:100%!important}}
+ .compliance-ring{{width:150px!important;height:150px!important}}
+ .compliance-ring>div{{width:88px!important;height:88px!important}}
+ .qual-bars .hbar{{grid-template-columns:78px minmax(0,1fr) 24px!important;gap:6px!important}}
+ .qual-bars .hbar>span{{font-size:10px!important}}
+
+ .grid,.grid2,.grid3,.quick,.row{{grid-template-columns:1fr!important}}
+ .card{{max-width:100%!important}}
+ .course-facts{{grid-template-columns:1fr!important}}
+
+ .tw{{width:100%!important;max-width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}}
+ table{{min-width:560px}}
+ main>.card:last-child{{max-width:100%!important;overflow:hidden!important}}
+}}
 </style></head><body>{nav}<script>document.addEventListener('DOMContentLoaded',()=>{{let p=location.pathname;document.querySelectorAll('.side-nav a').forEach(a=>{{let h=a.getAttribute('href');if((h==='/'&&p==='/')||(h!=='/'&&p.startsWith(h)))a.classList.add('active')}})}})</script><header><div class="club-head"><strong>EASTERN GAELS</strong><span>GAELIC GAMES CLUB</span><small>OUR CLUB &nbsp;•&nbsp; OUR COMMUNITY &nbsp;•&nbsp; OUR FUTURE</small></div><div class="head-right"><em>More Than A Club</em><span class="date-chip">{datetime.now().strftime('%d %b %Y')}</span></div></header><main>{b}</main></body></html>'''
 def card(s,admin=False):return f'''<div class="card session"><span class="badge {e(s['actual_status'])}">{e(s['actual_status'])}</span><h2>{e(s['school'])}</h2><div class="muted">{fd(s['date'])} · {e(s['start'])}–{e(s['end'])}</div><p><b>{e(s['coach'])}</b> · {e(s['class_group'])} · {e(s['age_group'])}<br>{e(s['title'])}</p><div class="actions"><a class="btn" href="/session?id={e(s['id'])}">Open session</a>{'<a class="btn secondary" href="/edit?id='+e(s['id'])+'">Edit</a>' if admin else ''}</div></div>'''
 class H(BaseHTTPRequestHandler):
