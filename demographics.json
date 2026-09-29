@@ -549,6 +549,40 @@
     "MEGAN DUNNE",
     "DAWN O REILLY"
   ],
+  "senior_adult_mens_count": 31,
+  "senior_adult_mens_members": [
+    "AARON BROWNING",
+    "AARON MOONEY",
+    "AIDAN MULLIGAN",
+    "ALAN CULLINAN",
+    "ISAAC BARBARA",
+    "STEFAN BORS",
+    "MARK BERNEY",
+    "SIMON CORRIGAN",
+    "SEAN COLLIER",
+    "IAN DAY",
+    "PEARSE OG GILROY",
+    "COLIN HARTE",
+    "JOSH HAYES",
+    "EOIN KINNEAR",
+    "CRAIG MAGILL",
+    "FIONN MCLOUGHLIN",
+    "KEITH MARTIN",
+    "ROSS MOLLOY",
+    "SEAN O GORMON",
+    "TOMAS QUINN",
+    "KILLIAN SHEPPARD",
+    "RAY TAKARINDA",
+    "ALEX RUSSELL",
+    "CORMAC LYNCH",
+    "SAUL MAHER",
+    "SAM MURTAGH",
+    "DANIEL MAHER",
+    "MAX RUSSELL",
+    "DAVID",
+    "ZACH",
+    "SHANE CALLINAN"
+  ],
   "upcoming_events": [
     {
       "event": "U10 Boys V St Pats",
@@ -594,5 +628,5 @@
     }
   ],
   "warnings": [],
-  "imported_at": "2026-09-29T12:50:24"
+  "imported_at": "2026-09-29T13:03:23"
 }
