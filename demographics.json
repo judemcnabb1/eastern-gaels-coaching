@@ -160,7 +160,7 @@
     "2023": 6,
     "2024": 18,
     "2025": 31,
-    "2026": 84
+    "2026": 71
   },
   "areas": {
     "BETTYSTOWN": 30,
@@ -563,6 +563,9 @@
       "sort_date": "2026-10-11"
     }
   ],
-  "warnings": [],
-  "imported_at": "2026-09-29T12:18:13"
+  "warnings": [
+    "Parish catchment sums to 72, latest player total is 71",
+    "School catchment sums to 72, latest player total is 71"
+  ],
+  "imported_at": "2026-09-29T12:33:54"
 }

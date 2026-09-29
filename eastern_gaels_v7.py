@@ -330,15 +330,20 @@ def parse_demographics_xlsx(path):
     warnings.append(f'{g} summary total is {summary_total}; player tab contains {actual_total}. Using player-tab count.')
    age_totals[g]=actual_total
 
- # Senior Adult Non-Playing Members: count populated member names in column B.
- # The tab title is intentionally matched by prefix so minor naming variations remain supported.
+ # Senior Adult Non-Playing Members: count only the numbered member list,
+ # not the yearly summary rows at the top of the worksheet.
  senior_adult_non_playing=[]
  try:
   aws=find_sheet('Senior Adult Non Playing Member')
-  for row in aws.iter_rows(min_row=2,max_col=2,values_only=True):
-   member=' '.join(str(row[1] or '').strip().split())
-   if not member or clean_name(member).startswith('SENIOR ADULT NON PLAYING'): continue
-   senior_adult_non_playing.append(member)
+  in_member_list=False
+  for left,right in aws.iter_rows(min_row=1,max_col=2,values_only=True):
+   right_text=' '.join(str(right or '').strip().split())
+   if clean_name(right_text).startswith('SENIOR ADULT NON PLAYING MEMBERS'):
+    in_member_list=True;continue
+   if not in_member_list or not right_text:continue
+   try: member_no=int(float(left))
+   except (TypeError,ValueError):continue
+   if member_no>=1:senior_adult_non_playing.append(right_text)
  except ValueError:
   warnings.append('Senior Adult Non Playing Member worksheet not found; adult non-playing count set to 0.')
  senior_adult_non_playing_count=len(senior_adult_non_playing)
@@ -346,7 +351,7 @@ def parse_demographics_xlsx(path):
  games=two_col('Games Played By Age Group')
  # Growth sheet uses Excel numeric years (e.g. 2023.0). Parse them as years
  # instead of passing them through clean_name(), which would produce '2023.0'.
- growthws=find_sheet('Growth Year on Year');growth={}
+ growthws=find_sheet('Juvenile Growth Year on Year');growth={}
  for yr,val in growthws.iter_rows(min_row=2,max_col=2,values_only=True):
   try:
    year=int(float(yr))
@@ -355,13 +360,10 @@ def parse_demographics_xlsx(path):
   if year < 1900 or year > 2200 or val is None or str(val).strip()=='':
    continue
   growth[str(year)]=num(val)
- # For the latest programme year, current membership follows the player tabs.
- if growth and players_by_age:
-  latest_year=max(growth.keys(),key=int)
-  growth[latest_year]=sum(age_totals.values())+senior_adult_non_playing_count
+ # Juvenile Membership Growth remains sourced from its dedicated worksheet.
  areas=two_col('Parish Catchment Areas')
  schools=two_col('Schools Catchment Areas')
- total_players=sum(age_totals.values())
+ total_players=growth.get(max(growth.keys(),key=int),sum(age_totals.values())) if growth else sum(age_totals.values())
  if sum(areas.values())!=total_players:warnings.append(f'Parish catchment sums to {sum(areas.values())}, latest player total is {total_players}')
  if sum(schools.values())!=total_players:warnings.append(f'School catchment sums to {sum(schools.values())}, latest player total is {total_players}')
  coaching,events=parse_integrated_tabs(wb)
@@ -744,7 +746,7 @@ class H(BaseHTTPRequestHandler):
   if path=='/':
    w,a=self.vis(u);ss=c.execute('select * from sessions '+w+' order by date,start',a).fetchall();c.close()
    years=sorted((int(y) for y in DEMO.get('growth',{}) if str(y).isdigit()));latest=years[-1] if years else datetime.now().year;prevyr=years[-2] if len(years)>1 else latest-1
-   members=int(DEMO.get('growth',{}).get(str(latest),sum(DEMO.get('age_totals',{}).values())));prev=int(DEMO.get('growth',{}).get(str(prevyr),0));gpct=round((members-prev)*100/prev) if prev else 0
+   juvenile_members=sum(DEMO.get('age_totals',{}).values());adult_members=int(DEMO.get('senior_adult_non_playing_count',0));members=juvenile_members+adult_members;prev=int(DEMO.get('growth',{}).get(str(prevyr),0));latest_juvenile=int(DEMO.get('growth',{}).get(str(latest),juvenile_members));gpct=round((latest_juvenile-prev)*100/prev) if prev else 0
    coaches=list(COACHING.get('coaches',{}).values());vetted=sum(str(x.get('garda_vetted','')).upper()=='YES' for x in coaches);safe=sum(str(x.get('safeguarding','')).upper()=='YES' for x in coaches);qual=sum(str(x.get('qualification','')).upper() not in ('','UNKNOWN','NONE','NO') for x in coaches)
    games=sum(int(v) for v in DEMO.get('games',{}).values());done=sum(x['actual_status']=='Completed' for x in ss);attendance=sum((x['attendance'] or 0) for x in ss if x['actual_status']=='Completed')
    growth=DEMO.get('growth',{});growth_chart=svg_bar_chart({str(y):int(growth.get(str(y),0)) for y in years[-6:]},230)
@@ -971,7 +973,7 @@ class H(BaseHTTPRequestHandler):
 if __name__=='__main__':
  init()
  # On a clean V8 install, preload the bundled master workbook automatically.
- bundled=os.path.join(BASE,'eastern gaels demographics (23).xlsx')
+ bundled=os.path.join(BASE,'eastern gaels demographics (24).xlsx')
  if os.path.exists(bundled) and not os.path.exists(DEMO_FILE):
   try:
    fresh=parse_demographics_xlsx(bundled)
