@@ -33,6 +33,8 @@ def load_demo():
  d.setdefault('players_by_age', {})
  d.setdefault('senior_adult_non_playing_count', 0)
  d.setdefault('senior_adult_non_playing_members', [])
+ d.setdefault('senior_adult_ladies_count', 0)
+ d.setdefault('senior_adult_ladies_members', [])
  d.setdefault('upcoming_events', [])
  d.setdefault('warnings', [])
  return d
@@ -348,6 +350,20 @@ def parse_demographics_xlsx(path):
   warnings.append('Senior Adult Non Playing Member worksheet not found; adult non-playing count set to 0.')
  senior_adult_non_playing_count=len(senior_adult_non_playing)
 
+ # Senior Adult Ladies Members: count only numbered rows with a member name.
+ senior_adult_ladies=[]
+ try:
+  lws=find_sheet('Senior Adult Ladies Members')
+  for left,right in lws.iter_rows(min_row=1,max_col=2,values_only=True):
+   right_text=' '.join(str(right or '').strip().split())
+   if not right_text:continue
+   try: member_no=int(float(left))
+   except (TypeError,ValueError):continue
+   if 1<=member_no<1000:senior_adult_ladies.append(right_text)
+ except ValueError:
+  warnings.append('Senior Adult Ladies Members worksheet not found; ladies count set to 0.')
+ senior_adult_ladies_count=len(senior_adult_ladies)
+
  games=two_col('Games Played By Age Group')
  # Growth sheet uses Excel numeric years (e.g. 2023.0). Parse them as years
  # instead of passing them through clean_name(), which would produce '2023.0'.
@@ -367,7 +383,7 @@ def parse_demographics_xlsx(path):
  if sum(areas.values())!=total_players:warnings.append(f'Parish catchment sums to {sum(areas.values())}, latest player total is {total_players}')
  if sum(schools.values())!=total_players:warnings.append(f'School catchment sums to {sum(schools.values())}, latest player total is {total_players}')
  coaching,events=parse_integrated_tabs(wb)
- return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'players_by_age':players_by_age,'senior_adult_non_playing_count':senior_adult_non_playing_count,'senior_adult_non_playing_members':senior_adult_non_playing,'upcoming_events':events,'coaching':coaching,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
+ return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'players_by_age':players_by_age,'senior_adult_non_playing_count':senior_adult_non_playing_count,'senior_adult_non_playing_members':senior_adult_non_playing,'senior_adult_ladies_count':senior_adult_ladies_count,'senior_adult_ladies_members':senior_adult_ladies,'upcoming_events':events,'coaching':coaching,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
 
 def dbc(): c=sqlite3.connect(DB);c.row_factory=sqlite3.Row;return c
 def hp(p,s=None):
@@ -746,7 +762,7 @@ class H(BaseHTTPRequestHandler):
   if path=='/':
    w,a=self.vis(u);ss=c.execute('select * from sessions '+w+' order by date,start',a).fetchall();c.close()
    years=sorted((int(y) for y in DEMO.get('growth',{}) if str(y).isdigit()));latest=years[-1] if years else datetime.now().year;prevyr=years[-2] if len(years)>1 else latest-1
-   juvenile_members=sum(DEMO.get('age_totals',{}).values());adult_members=int(DEMO.get('senior_adult_non_playing_count',0));members=juvenile_members+adult_members;prev=int(DEMO.get('growth',{}).get(str(prevyr),0));latest_juvenile=int(DEMO.get('growth',{}).get(str(latest),juvenile_members));gpct=round((latest_juvenile-prev)*100/prev) if prev else 0
+   juvenile_members=sum(DEMO.get('age_totals',{}).values());adult_members=int(DEMO.get('senior_adult_non_playing_count',0));ladies_members=int(DEMO.get('senior_adult_ladies_count',0));members=juvenile_members+adult_members+ladies_members;prev=int(DEMO.get('growth',{}).get(str(prevyr),0));latest_juvenile=int(DEMO.get('growth',{}).get(str(latest),juvenile_members));gpct=round((latest_juvenile-prev)*100/prev) if prev else 0
    coaches=list(COACHING.get('coaches',{}).values());vetted=sum(str(x.get('garda_vetted','')).upper()=='YES' for x in coaches);safe=sum(str(x.get('safeguarding','')).upper()=='YES' for x in coaches);qual=sum(str(x.get('qualification','')).upper() not in ('','UNKNOWN','NONE','NO') for x in coaches)
    games=sum(int(v) for v in DEMO.get('games',{}).values());done=sum(x['actual_status']=='Completed' for x in ss);attendance=sum((x['attendance'] or 0) for x in ss if x['actual_status']=='Completed')
    growth=DEMO.get('growth',{});growth_chart=svg_bar_chart({str(y):int(growth.get(str(y),0)) for y in years[-6:]},230)
@@ -769,7 +785,7 @@ class H(BaseHTTPRequestHandler):
    evs=DEMO.get('upcoming_events',[])[:6]
    evrows=''.join(f'<tr><td><b>{e(x.get("event",""))}</b></td><td>{e(x.get("venue",""))}</td><td>{e(x.get("date",""))}</td><td>{e(x.get("time",""))}</td></tr>' for x in evs)
    upcoming_html=('<div class="card" style="margin-top:14px"><div class="section-title"><h3>Upcoming Events</h3><span class="pill">'+str(len(DEMO.get('upcoming_events',[])))+' scheduled</span></div><div class="tw"><table><tr><th>Event</th><th>Venue</th><th>Date</th><th>Time</th></tr>'+evrows+'</table></div></div>') if evs else ''
-   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><div class="card kpi"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>From dedicated membership tab</small></div><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
+   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><div class="card kpi"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>From dedicated membership tab</small></div><div class="card kpi"><span class="metric-icon">L</span><div class="stat">{ladies_members}</div><b>Senior Adult Ladies Members</b><small>From dedicated membership tab</small></div><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
   if path=='/today':
    d=q.get('date',[date.today().isoformat()])[0];w,a=self.vis(u);con='and' if 'where' in w else 'where';r=c.execute('select * from sessions '+w+con+' date=? order by start',a+[d]).fetchall();c.close();b=f'<div class="hero"><div><div class="eyebrow">Schools programme</div><h2>Selected Day</h2></div></div><form class="card"><label>Date</label><div class="row"><input type="date" name="date" value="{e(d)}"><button>Show date</button></div></form>'+(''.join(card(x,True) for x in r) if r else '<div class="card">No coaching scheduled for this date.</div>');return self.out(page('Schools Schedule',b,u))
   if path=='/schedule':
@@ -973,7 +989,7 @@ class H(BaseHTTPRequestHandler):
 if __name__=='__main__':
  init()
  # On a clean V8 install, preload the bundled master workbook automatically.
- bundled=os.path.join(BASE,'eastern gaels demographics (24).xlsx')
+ bundled=os.path.join(BASE,'eastern gaels demographics (25).xlsx')
  if os.path.exists(bundled) and not os.path.exists(DEMO_FILE):
   try:
    fresh=parse_demographics_xlsx(bundled)

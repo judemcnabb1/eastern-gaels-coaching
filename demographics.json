@@ -160,7 +160,7 @@
     "2023": 6,
     "2024": 18,
     "2025": 31,
-    "2026": 71
+    "2026": 72
   },
   "areas": {
     "BETTYSTOWN": 30,
@@ -519,6 +519,36 @@
     "EILIS NI MHURCHADHA",
     "TRISH WILKINSON"
   ],
+  "senior_adult_ladies_count": 27,
+  "senior_adult_ladies_members": [
+    "CAOIMHE HORAN",
+    "AILBHE HORAN",
+    "KATE BALL",
+    "GERALDINE DOYLE",
+    "KATE KELLY",
+    "SORCHA NIC AN ABA",
+    "SADBH KINDLON",
+    "CARA KINDLON",
+    "EMMA O'SULLIVAN",
+    "KATE O SULLIVAN",
+    "GRACE TOOLAN",
+    "GRACE MILNER",
+    "DEANNA MCGOWAN",
+    "KELLY ANN BUCHANAN",
+    "MEGAN SOWRAY",
+    "MEGAN MURRAY",
+    "MEGAN CROMWELL",
+    "ANNALEIGH MCGUINNESS",
+    "CAOIMHE CAIRNS",
+    "AOIBHEANN BUTLER",
+    "CLIODHNA CAIRNS",
+    "SORCHA CRONIN",
+    "LEAH MAGUIRE",
+    "KAROLINA SLIONSKYTE",
+    "KATE CROMWELL",
+    "MEGAN DUNNE",
+    "DAWN O REILLY"
+  ],
   "upcoming_events": [
     {
       "event": "U10 Boys V St Pats",
@@ -563,9 +593,6 @@
       "sort_date": "2026-10-11"
     }
   ],
-  "warnings": [
-    "Parish catchment sums to 72, latest player total is 71",
-    "School catchment sums to 72, latest player total is 71"
-  ],
-  "imported_at": "2026-09-29T12:33:54"
+  "warnings": [],
+  "imported_at": "2026-09-29T12:50:24"
 }
