@@ -245,6 +245,17 @@ def parse_demographics_xlsx(path):
   for n in names:
    if clean_name(n).startswith(clean_name(prefix)):return wb[n]
   raise ValueError('Missing worksheet: '+prefix)
+ def find_growth_sheet():
+  # Flexible lookup: current name, legacy name, or a future name containing
+  # both GROWTH and YEAR.
+  for label in ('Juvenile Growth Year on Year','Growth Year on Year'):
+   key=clean_name(label)
+   for n in names:
+    if clean_name(n).startswith(key):return wb[n]
+  for n in names:
+   key=clean_name(n)
+   if 'GROWTH' in key and 'YEAR' in key:return wb[n]
+  raise ValueError('Missing juvenile membership growth worksheet')
  agews=find_sheet('Age Group Numbers Breakdown')
  age_totals={};age_areas={};age_schools={};warnings=[]
  for col,g in zip([1,4,7,10,13,16,19,22],['U12','U11','U10','U9','U8','U7','U6','U5']):
@@ -301,7 +312,7 @@ def parse_demographics_xlsx(path):
     birth_year=Counter(birth_years).most_common(1)[0][0]
     # Growth Year on Year is the authoritative programme year where available.
     try:
-     gws=find_sheet('Growth Year on Year');years=[]
+     gws=find_growth_sheet();years=[]
      for rr in gws.iter_rows(min_row=2,max_col=2,values_only=True):
       try:
        yy=int(float(rr[0])); total=rr[1]
@@ -383,7 +394,7 @@ def parse_demographics_xlsx(path):
  games=two_col('Games Played By Age Group')
  # Growth sheet uses Excel numeric years (e.g. 2023.0). Parse them as years
  # instead of passing them through clean_name(), which would produce '2023.0'.
- growthws=find_sheet('Juvenile Growth Year on Year');growth={}
+ growthws=find_growth_sheet();growth={}
  for yr,val in growthws.iter_rows(min_row=2,max_col=2,values_only=True):
   try:
    year=int(float(yr))
@@ -499,7 +510,7 @@ def adult_members_drilldown(group):
  if group not in mapping:return ''
  title,key=mapping[group]
  members=DEMO.get(key,[]) or []
- rows=''.join(f'<tr><td>{i}</td><td>{esc(name)}</td></tr>' for i,name in enumerate(members,1))
+ rows=''.join(f'<tr><td>{i}</td><td>{e(name)}</td></tr>' for i,name in enumerate(members,1))
  if not rows:rows='<tr><td colspan="2">No members found in the latest demographics upload.</td></tr>'
  return f"""<div class="card">
  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -769,11 +780,6 @@ class H(BaseHTTPRequestHandler):
   return u
  def vis(self,u):return (' ',[])
  def do_GET(self):
-  if self.path.startswith('/members/'):
-   group=self.path.split('?',1)[0].rstrip('/').split('/')[-1]
-   body=adult_members_drilldown(group)
-   if body:
-    return self.html(page(body,'Members'))
   p=urlparse(self.path);path=p.path;q=parse_qs(p.query);c=dbc()
   if path=='/simple-analytics.png':
    c.close();pimg=os.path.join(BASE,'simple-analytics.png')
@@ -800,6 +806,12 @@ class H(BaseHTTPRequestHandler):
    z=SimpleCookie(self.headers.get('Cookie'));sid=z.get('egsid');SESS.pop(sid.value,None) if sid else None;c.close();self.send_response(303);self.send_header('Location','/login');self.send_header('Set-Cookie','egsid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax');self.end_headers();return
   u=self.need()
   if not u:c.close();return
+  if path.startswith('/members/'):
+   group=path.rstrip('/').split('/')[-1]
+   body=adult_members_drilldown(group)
+   if body:
+    c.close()
+    return self.out(page('Members',body,u))
   if path=='/':
    w,a=self.vis(u);ss=c.execute('select * from sessions '+w+' order by date,start',a).fetchall();c.close()
    years=sorted((int(y) for y in DEMO.get('growth',{}) if str(y).isdigit()));latest=years[-1] if years else datetime.now().year;prevyr=years[-2] if len(years)>1 else latest-1
