@@ -24,7 +24,7 @@
       "MORNINGTON": 2,
       "DONACARNEY": 0,
       "DUBLIN ROAD": 2,
-      "UNKNOWN ADDRESS": 0
+      "UNKNOWN ADDRESS": 1
     },
     "U10": {
       "BETTYSTOWN": 4,
@@ -90,7 +90,7 @@
       "LE CHEILE": 0,
       "RNM BOYS": 1,
       "RNM GIRLS": 3,
-      "UNKNOWN": 0,
+      "ST MARYS PPS": 1,
       "GAELSCOIL": 0,
       "SPN": 4
     },
@@ -126,7 +126,7 @@
       "LE CHEILE": 0,
       "RNM BOYS": 0,
       "RNM GIRLS": 0,
-      "UNKNOWN": 1,
+      "ST JOHNS DROGHEDA": 1,
       "GAELSCOIL": 0,
       "SPN": 0
     },
@@ -144,7 +144,7 @@
       "LE CHEILE": 0,
       "RNM BOYS": 0,
       "RNM GIRLS": 0,
-      "UNKNOWN": 1,
+      "ST JOHNS DROGHEDA": 1,
       "GAELSCOIL": 0,
       "SPN": 0
     }
@@ -160,14 +160,14 @@
     "2023": 6,
     "2024": 18,
     "2025": 31,
-    "2026": 72
+    "2026": 84
   },
   "areas": {
     "BETTYSTOWN": 30,
     "LAYTOWN": 11,
     "MORNINGTON": 14,
     "DONACARNEY": 7,
-    "DUBLIN ROAD": 6,
+    "DUBLIN ROAD": 7,
     "UNKNOWN ADDRESS": 3
   },
   "schools": {
@@ -177,14 +177,15 @@
     "RNM GIRLS": 9,
     "UNKNOWN": 3,
     "GAELSCOIL": 0,
-    "SPN": 19
+    "SPN": 19,
+    "ST MARYS PPS": 1
   },
   "catchment": {
     "BETTYSTOWN": 30,
     "LAYTOWN": 11,
     "MORNINGTON": 14,
     "DONACARNEY": 7,
-    "DUBLIN ROAD": 6,
+    "DUBLIN ROAD": 7,
     "UNKNOWN ADDRESS": 3
   },
   "school_totals": {
@@ -194,7 +195,8 @@
     "RNM GIRLS": 9,
     "UNKNOWN": 3,
     "GAELSCOIL": 0,
-    "SPN": 19
+    "SPN": 19,
+    "ST MARYS PPS": 1
   },
   "players_by_age": {
     "U12": [
@@ -502,7 +504,29 @@
       }
     ]
   },
+  "senior_adult_non_playing_count": 12,
+  "senior_adult_non_playing_members": [
+    "BRENDAN QUIGLEY",
+    "DAVID BALL",
+    "JUDE MCNABB",
+    "TOM MCLOUGHLIN",
+    "PEARSE GILROY",
+    "MICK MOLLOY",
+    "DARREN O SULLIVAN",
+    "JOHNNY CAIRNS",
+    "NICOLA MAHER",
+    "KEVIN KEANE",
+    "EILIS NI MHURCHADHA",
+    "TRISH WILKINSON"
+  ],
   "upcoming_events": [
+    {
+      "event": "U10 Boys V St Pats",
+      "venue": "St Pats, Stamullen",
+      "date": "30 Sep 2026",
+      "time": "19:00",
+      "sort_date": "2026-09-30"
+    },
     {
       "event": "U12 Boys Friendly V St Pats",
       "venue": "St Pats",
@@ -539,10 +563,6 @@
       "sort_date": "2026-10-11"
     }
   ],
-  "warnings": [
-    "U11 summary total is 8; player tab contains 9. Using player-tab count.",
-    "Parish catchment sums to 71, latest player total is 72",
-    "School catchment sums to 71, latest player total is 72"
-  ],
-  "imported_at": "2026-09-27T18:20:06"
+  "warnings": [],
+  "imported_at": "2026-09-29T12:18:13"
 }
