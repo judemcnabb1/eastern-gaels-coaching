@@ -489,6 +489,26 @@ def hbar_chart(data):
  items=[(str(k),int(v)) for k,v in data.items()];mx=max([v for _,v in items] or [1])
  return '<div class="hbars qual-bars">'+''.join(f'<div class="hbar"><span>{e(k)}</span><div><i style="width:{v*100/mx:.1f}%;background:linear-gradient(90deg,{CHART_COLORS[i%len(CHART_COLORS)]},{CHART_COLORS[(i+1)%len(CHART_COLORS)]})"></i></div><b>{v}</b></div>' for i,(k,v) in enumerate(items))+'</div>'
 
+
+def adult_members_drilldown(group):
+ mapping={
+  'mens':('Senior Adult Mens Members','senior_adult_mens_members'),
+  'ladies':('Senior Adult Ladies Members','senior_adult_ladies_members'),
+  'non-playing':('Senior Adult Non-Playing Members','senior_adult_non_playing_members'),
+ }
+ if group not in mapping:return ''
+ title,key=mapping[group]
+ members=DEMO.get(key,[]) or []
+ rows=''.join(f'<tr><td>{i}</td><td>{esc(name)}</td></tr>' for i,name in enumerate(members,1))
+ if not rows:rows='<tr><td colspan="2">No members found in the latest demographics upload.</td></tr>'
+ return f"""<div class="card">
+ <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+  <div><h2 style="margin:0">{title}</h2><small>{len(members)} members from the latest demographics spreadsheet</small></div>
+  <a class="btn" href="/">← Back to Club Overview</a>
+ </div>
+ <div class="tw" style="margin-top:16px"><table><thead><tr><th>No.</th><th>Member Name</th></tr></thead><tbody>{rows}</tbody></table></div>
+ </div>"""
+
 def page(title,b,u=None):
  nav=''
  if u:
@@ -749,6 +769,11 @@ class H(BaseHTTPRequestHandler):
   return u
  def vis(self,u):return (' ',[])
  def do_GET(self):
+  if self.path.startswith('/members/'):
+   group=self.path.split('?',1)[0].rstrip('/').split('/')[-1]
+   body=adult_members_drilldown(group)
+   if body:
+    return self.html(page(body,'Members'))
   p=urlparse(self.path);path=p.path;q=parse_qs(p.query);c=dbc()
   if path=='/simple-analytics.png':
    c.close();pimg=os.path.join(BASE,'simple-analytics.png')
@@ -801,7 +826,7 @@ class H(BaseHTTPRequestHandler):
    evs=DEMO.get('upcoming_events',[])[:6]
    evrows=''.join(f'<tr><td><b>{e(x.get("event",""))}</b></td><td>{e(x.get("venue",""))}</td><td>{e(x.get("date",""))}</td><td>{e(x.get("time",""))}</td></tr>' for x in evs)
    upcoming_html=('<div class="card" style="margin-top:14px"><div class="section-title"><h3>Upcoming Events</h3><span class="pill">'+str(len(DEMO.get('upcoming_events',[])))+' scheduled</span></div><div class="tw"><table><tr><th>Event</th><th>Venue</th><th>Date</th><th>Time</th></tr>'+evrows+'</table></div></div>') if evs else ''
-   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><div class="card kpi"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>From dedicated membership tab</small></div><div class="card kpi"><span class="metric-icon">L</span><div class="stat">{ladies_members}</div><b>Senior Adult Ladies Members</b><small>From dedicated membership tab</small></div><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{mens_members}</div><b>Senior Adult Mens Members</b><small>From dedicated membership tab</small></div><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
+   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><a href="/members/non-playing" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>Tap to view members</small></a><a href="/members/ladies" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">L</span><div class="stat">{ladies_members}</div><b>Senior Adult Ladies Members</b><small>Tap to view members</small></a><a href="/members/mens" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">M</span><div class="stat">{mens_members}</div><b>Senior Adult Mens Members</b><small>Tap to view members</small></a><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
   if path=='/today':
    d=q.get('date',[date.today().isoformat()])[0];w,a=self.vis(u);con='and' if 'where' in w else 'where';r=c.execute('select * from sessions '+w+con+' date=? order by start',a+[d]).fetchall();c.close();b=f'<div class="hero"><div><div class="eyebrow">Schools programme</div><h2>Selected Day</h2></div></div><form class="card"><label>Date</label><div class="row"><input type="date" name="date" value="{e(d)}"><button>Show date</button></div></form>'+(''.join(card(x,True) for x in r) if r else '<div class="card">No coaching scheduled for this date.</div>');return self.out(page('Schools Schedule',b,u))
   if path=='/schedule':
