@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os,re,json,sqlite3,secrets,hashlib,hmac,csv,io,html,shutil
+import os,re,json,sqlite3,secrets,hashlib,hmac,csv,io,html,shutil,threading,time,tempfile,gc
 from openpyxl import load_workbook
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from urllib.parse import urlparse,parse_qs
@@ -49,6 +49,15 @@ def load_coaching():
  with open(p,encoding="utf8") as f:d=json.load(f)
  d.setdefault("coaches",{});d.setdefault("teams",{});return d
 COACHING=load_coaching()
+
+# Google Drive automatic source feeds.
+# Authentication is supplied through GOOGLE_SERVICE_ACCOUNT_JSON in the environment.
+GOOGLE_DEMOGRAPHICS_SHEET_ID=os.environ.get('GOOGLE_DEMOGRAPHICS_SHEET_ID','1EIG_JZ-bDShJ2mbuI-hLdmTWLNZsaC5EbS4AdB3PMPo')
+GOOGLE_SCHOOLS_SHEET_ID=os.environ.get('GOOGLE_SCHOOLS_SHEET_ID','1F4aC6kgQ3ajaa-fXHYxe_P7M7m_RGPpE0HRirnzkm78')
+GOOGLE_SYNC_MINUTES=max(5,int(os.environ.get('GOOGLE_SYNC_MINUTES','15')))
+GOOGLE_SYNC_ENABLED=os.environ.get('GOOGLE_SYNC_ENABLED','1').strip().lower() not in ('0','false','no','off')
+SYNC_STATUS_FILE=os.path.join(DATA_DIR,'google_sync_status.json')
+SYNC_LOCK=threading.Lock()
 def coach_key(x):
  k=" ".join(str(x or "").strip().upper().split());return {"KATE O SULLIVAN":"KATE SULLIVAN"}.get(k,k)
 def parse_expiry_text(x):
@@ -411,6 +420,126 @@ def parse_demographics_xlsx(path):
  if sum(schools.values())!=total_players:warnings.append(f'School catchment sums to {sum(schools.values())}, latest player total is {total_players}')
  coaching,events=parse_integrated_tabs(wb)
  return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'players_by_age':players_by_age,'senior_adult_non_playing_count':senior_adult_non_playing_count,'senior_adult_non_playing_members':senior_adult_non_playing,'senior_adult_ladies_count':senior_adult_ladies_count,'senior_adult_ladies_members':senior_adult_ladies,'senior_adult_mens_count':senior_adult_mens_count,'senior_adult_mens_members':senior_adult_mens,'upcoming_events':events,'coaching':coaching,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
+
+
+def load_sync_status():
+ try:
+  with open(SYNC_STATUS_FILE,encoding='utf8') as f:return json.load(f)
+ except (OSError,json.JSONDecodeError):return {}
+
+def save_sync_status(status):
+ tmp=SYNC_STATUS_FILE+'.tmp'
+ with open(tmp,'w',encoding='utf8') as f:json.dump(status,f,indent=2,ensure_ascii=False)
+ os.replace(tmp,SYNC_STATUS_FILE)
+
+def google_credentials():
+ raw=os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON','').strip()
+ if not raw:raise RuntimeError('GOOGLE_SERVICE_ACCOUNT_JSON is not configured')
+ try:info=json.loads(raw)
+ except json.JSONDecodeError as ex:raise RuntimeError('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON') from ex
+ from google.oauth2 import service_account
+ return service_account.Credentials.from_service_account_info(
+  info,scopes=['https://www.googleapis.com/auth/drive.readonly'])
+
+def google_export_xlsx(file_id,destination):
+ from google.auth.transport.requests import AuthorizedSession
+ creds=google_credentials();session=AuthorizedSession(creds)
+ url=f'https://www.googleapis.com/drive/v3/files/{file_id}/export'
+ r=session.get(url,params={'mimeType':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},timeout=60)
+ if r.status_code!=200:
+  detail=(r.text or '')[:300]
+  raise RuntimeError(f'Google Drive export failed ({r.status_code}): {detail}')
+ with open(destination,'wb') as f:f.write(r.content)
+ return len(r.content)
+
+def activate_demographics_from_xlsx(path):
+ global DEMO,COACHING
+ parsed=parse_demographics_xlsx(path)  # validate completely before replacing live data
+ integrated=parsed.pop('coaching',None)
+ hist=os.path.join(DATA_DIR,'demographics_history');os.makedirs(hist,exist_ok=True)
+ if os.path.exists(DEMO_FILE):
+  shutil.copy2(DEMO_FILE,os.path.join(hist,'demographics_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'.json'))
+ tmp=DEMO_FILE+'.tmp'
+ with open(tmp,'w',encoding='utf8') as f:json.dump(parsed,f,indent=2,ensure_ascii=False)
+ os.replace(tmp,DEMO_FILE)
+ if integrated:
+  ctmp=COACH_FILE+'.tmp'
+  with open(ctmp,'w',encoding='utf8') as f:json.dump(integrated,f,indent=2,ensure_ascii=False)
+  os.replace(ctmp,COACH_FILE)
+ DEMO=load_demo();COACHING=load_coaching()
+ return {'juvenile_members':sum(DEMO.get('age_totals',{}).values()),
+         'senior_mens':DEMO.get('senior_adult_mens_count',0),
+         'senior_ladies':DEMO.get('senior_adult_ladies_count',0),
+         'senior_non_playing':DEMO.get('senior_adult_non_playing_count',0)}
+
+def activate_schools_from_xlsx(path):
+ sessions=parse_schools_xlsx(path)  # validate before touching the live schedule
+ c=dbc()
+ try:
+  c.execute('begin')
+  c.execute('delete from sessions')
+  for s in sessions:
+   c.execute('insert into sessions(id,date,day,school,coach,title,start,end,class_group,age_group,planned_status,actual_status) values(?,?,?,?,?,?,?,?,?,?,?,?)',
+    (s['id'],s['date'],s['day'],s['school'],s['coach'],s['session'],s['start'],s['end'],s['group'],s['age'],s['status'],s['status']))
+  c.commit()
+ except:
+  c.rollback();raise
+ finally:c.close()
+ shutil.copy2(path,os.path.join(DATA_DIR,'schools_schedule_current.xlsx'))
+ return {'sessions':len(sessions)}
+
+def sync_google_sources():
+ if not GOOGLE_SYNC_ENABLED:return {'enabled':False}
+ if not SYNC_LOCK.acquire(blocking=False):return {'enabled':True,'skipped':'sync already running'}
+ status=load_sync_status()
+ status['enabled']=True;status['last_attempt']=datetime.now().isoformat(timespec='seconds')
+ status['interval_minutes']=GOOGLE_SYNC_MINUTES
+ try:
+  with tempfile.TemporaryDirectory(prefix='eg_google_sync_') as td:
+   demo_path=os.path.join(td,'demographics.xlsx')
+   schools_path=os.path.join(td,'schools.xlsx')
+   # Each feed is independent: one failed source never prevents the other retaining
+   # its last-known-good data.
+   try:
+    size=google_export_xlsx(GOOGLE_DEMOGRAPHICS_SHEET_ID,demo_path)
+    summary=activate_demographics_from_xlsx(demo_path)
+    status['demographics']={'ok':True,'last_success':datetime.now().isoformat(timespec='seconds'),
+     'bytes':size,'summary':summary,'error':None}
+   except Exception as ex:
+    old=status.get('demographics',{})
+    status['demographics']={'ok':False,'last_success':old.get('last_success'),
+     'summary':old.get('summary'),'error':str(ex)}
+   try:
+    size=google_export_xlsx(GOOGLE_SCHOOLS_SHEET_ID,schools_path)
+    summary=activate_schools_from_xlsx(schools_path)
+    status['schools']={'ok':True,'last_success':datetime.now().isoformat(timespec='seconds'),
+     'bytes':size,'summary':summary,'error':None}
+   except Exception as ex:
+    old=status.get('schools',{})
+    status['schools']={'ok':False,'last_success':old.get('last_success'),
+     'summary':old.get('summary'),'error':str(ex)}
+   # openpyxl read-only workbooks can retain ZipFile handles briefly on Windows.
+   # Force finalisation before TemporaryDirectory removes the downloaded XLSX files.
+   gc.collect()
+  save_sync_status(status)
+  return status
+ finally:
+  SYNC_LOCK.release()
+
+def google_sync_loop():
+ # First sync shortly after startup, then repeat at the configured interval.
+ time.sleep(3)
+ while True:
+  try:
+   st=sync_google_sources()
+   d=st.get('demographics',{});s=st.get('schools',{})
+   print('Google sync:', 'demographics OK' if d.get('ok') else 'demographics FAILED',
+         '|','schools OK' if s.get('ok') else 'schools FAILED')
+   if d.get('error'):print('Demographics sync error:',d['error'])
+   if s.get('error'):print('Schools sync error:',s['error'])
+  except Exception as ex:
+   print('Google sync unexpected error:',ex)
+  time.sleep(GOOGLE_SYNC_MINUTES*60)
 
 def dbc(): c=sqlite3.connect(DB);c.row_factory=sqlite3.Row;return c
 def hp(p,s=None):
@@ -1054,6 +1183,11 @@ if __name__=='__main__':
    print('Loaded latest Eastern Gaels workbook data.')
   except Exception as ex:
    print('Workbook preload warning:',ex)
+ if GOOGLE_SYNC_ENABLED:
+  threading.Thread(target=google_sync_loop,name='google-drive-sync',daemon=True).start()
+  print(f'Google Drive auto-sync enabled every {GOOGLE_SYNC_MINUTES} minutes.')
+ else:
+  print('Google Drive auto-sync disabled.')
  port=int(os.environ.get('PORT','8010'))
  print('*** EASTERN GAELS V8 - RENDER PRODUCTION ***')
  print(f'Open http://localhost:{port}')
