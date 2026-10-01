@@ -58,6 +58,12 @@ GOOGLE_SYNC_MINUTES=max(5,int(os.environ.get('GOOGLE_SYNC_MINUTES','15')))
 GOOGLE_SYNC_ENABLED=os.environ.get('GOOGLE_SYNC_ENABLED','1').strip().lower() not in ('0','false','no','off')
 SYNC_STATUS_FILE=os.path.join(DATA_DIR,'google_sync_status.json')
 SYNC_LOCK=threading.Lock()
+GPO_COST_FILE=os.path.join(DATA_DIR,'gpo_costs_current.json')
+def load_gpo_costs():
+ try:
+  with open(GPO_COST_FILE,encoding='utf8') as f:return json.load(f)
+ except (OSError,json.JSONDecodeError):return {'years':{},'imported_at':None}
+GPO_COSTS=load_gpo_costs()
 def coach_key(x):
  k=" ".join(str(x or "").strip().upper().split());return {"KATE O SULLIVAN":"KATE SULLIVAN"}.get(k,k)
 def parse_expiry_text(x):
@@ -115,6 +121,30 @@ def parse_schools_xlsx(path):
    sessions.append({'id':f'SCH-{seq:03d}','date':dval(raw_date),'day':str(cell(row,'day') or '').strip(),'school':school,'coach':str(cell(row,'coach') or '').strip(),'session':str(cell(row,'session / sport','session','title') or '').strip(),'start':tval(cell(row,'start time','start')),'end':tval(cell(row,'end time','end')),'group':str(cell(row,'group / year','class group','group') or '').strip(),'status':str(cell(row,'status') or 'Confirmed').strip(),'age':str(cell(row,'club age group','age group','age') or '').strip()});seq+=1
  if not sessions: raise ValueError('No school coaching sessions found. Expected columns including Date, School and Coach.')
  return sessions
+
+
+def parse_gpo_costs_xlsx(path):
+ wb=load_workbook(path,data_only=True,read_only=True)
+ years={}
+ for sheet_name in wb.sheetnames:
+  m=re.match(r'(?i)^GPO\s+COST\s+(\d{4})\s*-\s*(\d{4})$',str(sheet_name).strip())
+  if not m:continue
+  ws=wb[sheet_name];entries=[]
+  for row in ws.iter_rows(min_row=2,max_col=4,values_only=True):
+   worked,school,cost,detail=(list(row)+[None]*4)[:4]
+   school=str(school or '').strip()
+   if not school:continue
+   try:amount=float(cost or 0)
+   except (TypeError,ValueError):
+    s=re.sub(r'[^0-9.\-]','',str(cost or ''))
+    try:amount=float(s or 0)
+    except ValueError:amount=0.0
+   entries.append({'day':str(worked or '').strip(),'school':school,'cost':round(amount,2),'detail':str(detail or '').strip()})
+  label=f'{m.group(1)}/{m.group(2)[-2:]}'
+  years[label]={'sheet':sheet_name,'total':round(sum(x['cost'] for x in entries),2),'entries':entries}
+ wb.close()
+ if not years:raise ValueError('No GPO Cost worksheets found.')
+ return {'years':years,'imported_at':datetime.now().isoformat(timespec='seconds')}
 
 def parse_coaching_xlsx(path):
  wb=load_workbook(path,data_only=True,read_only=True);ws=next((wb[n] for n in wb.sheetnames if clean_name(n).startswith('GARDA VETTING')),None)
@@ -473,7 +503,9 @@ def activate_demographics_from_xlsx(path):
          'senior_non_playing':DEMO.get('senior_adult_non_playing_count',0)}
 
 def activate_schools_from_xlsx(path):
+ global GPO_COSTS
  sessions=parse_schools_xlsx(path)  # validate before touching the live schedule
+ gpo=parse_gpo_costs_xlsx(path)
  c=dbc()
  try:
   c.execute('begin')
@@ -486,7 +518,10 @@ def activate_schools_from_xlsx(path):
   c.rollback();raise
  finally:c.close()
  shutil.copy2(path,os.path.join(DATA_DIR,'schools_schedule_current.xlsx'))
- return {'sessions':len(sessions)}
+ tmp=GPO_COST_FILE+'.tmp'
+ with open(tmp,'w',encoding='utf8') as f:json.dump(gpo,f,indent=2,ensure_ascii=False)
+ os.replace(tmp,GPO_COST_FILE);GPO_COSTS=load_gpo_costs()
+ return {'sessions':len(sessions),'gpo_costs':{k:v.get('total',0) for k,v in GPO_COSTS.get('years',{}).items()}}
 
 def sync_google_sources():
  if not GOOGLE_SYNC_ENABLED:return {'enabled':False}
@@ -967,9 +1002,19 @@ class H(BaseHTTPRequestHandler):
    evs=DEMO.get('upcoming_events',[])[:6]
    evrows=''.join(f'<tr><td><b>{e(x.get("event",""))}</b></td><td>{e(x.get("venue",""))}</td><td>{e(x.get("date",""))}</td><td>{e(x.get("time",""))}</td></tr>' for x in evs)
    upcoming_html=('<div class="card" style="margin-top:14px"><div class="section-title"><h3>Upcoming Events</h3><span class="pill">'+str(len(DEMO.get('upcoming_events',[])))+' scheduled</span></div><div class="tw"><table><tr><th>Event</th><th>Venue</th><th>Date</th><th>Time</th></tr>'+evrows+'</table></div></div>') if evs else ''
-   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><a href="/members/non-playing" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>Tap to view members</small></a><a href="/members/ladies" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">L</span><div class="stat">{ladies_members}</div><b>Senior Adult Ladies Members</b><small>Tap to view members</small></a><a href="/members/mens" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">M</span><div class="stat">{mens_members}</div><b>Senior Adult Mens Members</b><small>Tap to view members</small></a><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
+   gpo_years=GPO_COSTS.get('years',{});gpo_current=gpo_years.get('2026/27',{});gpo_total=float(gpo_current.get('total',0) or 0)
+   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><a href="/members/non-playing" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>Tap to view members</small></a><a href="/members/ladies" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">L</span><div class="stat">{ladies_members}</div><b>Senior Adult Ladies Members</b><small>Tap to view members</small></a><a href="/members/mens" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">M</span><div class="stat">{mens_members}</div><b>Senior Adult Mens Members</b><small>Tap to view members</small></a><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div><a href="/gpo-costs" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">€</span><div class="stat">€{gpo_total:,.0f}</div><b>GPO Coaching Cost</b><small>2026/27 to date · Tap to view</small></a></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
   if path=='/today':
    d=q.get('date',[date.today().isoformat()])[0];w,a=self.vis(u);con='and' if 'where' in w else 'where';r=c.execute('select * from sessions '+w+con+' date=? order by start',a+[d]).fetchall();c.close();b=f'<div class="hero"><div><div class="eyebrow">Schools programme</div><h2>Selected Day</h2></div></div><form class="card"><label>Date</label><div class="row"><input type="date" name="date" value="{e(d)}"><button>Show date</button></div></form>'+(''.join(card(x,True) for x in r) if r else '<div class="card">No coaching scheduled for this date.</div>');return self.out(page('Schools Schedule',b,u))
+  if path=='/gpo-costs':
+   c.close();years=GPO_COSTS.get('years',{})
+   cards=''.join(f'<div class="card kpi"><div class="stat">€{float(v.get("total",0)):,.0f}</div><b>{e(y)} GPO Cost</b><small>{len(v.get("entries",[]))} recorded coaching visits</small></div>' for y,v in sorted(years.items()))
+   sections=''
+   for y,v in sorted(years.items(),reverse=True):
+    rows=''.join(f'<tr><td>{e(x.get("day",""))}</td><td>{e(x.get("school",""))}</td><td>€{float(x.get("cost",0)):,.2f}</td><td>{e(x.get("detail",""))}</td></tr>' for x in v.get('entries',[]))
+    sections+=f'<div class="card"><div class="section-title"><h3>{e(y)} GPO Coaching Costs</h3><span class="pill">Total €{float(v.get("total",0)):,.2f}</span></div><div class="tw"><table><tr><th>Day Worked</th><th>School</th><th>Cost</th><th>Detail</th></tr>{rows}</table></div></div>'
+   b=f'<div class="overview-title"><div><small>SCHOOLS PROGRAMME</small><h2>GPO Coaching Cost</h2></div><span>Automatically synced from the Schools workbook</span></div><div class="grid">{cards}</div>{sections}<div class="actions"><a class="btn secondary" href="/">← Back to Club Overview</a></div>'
+   return self.out(page('GPO Coaching Cost',b,u))
   if path=='/schedule':
    w,a=self.vis(u);r=c.execute('select * from sessions '+w+' order by date,start',a).fetchall();c.close();trs=''.join(f'<tr><td>{fd(x["date"])}</td><td><a href="/session?id={e(x["id"])}">{e(x["school"])}</a></td><td>{e(x["coach"])}</td><td>{e(x["class_group"])}</td><td><span class="badge {e(x["actual_status"])}">{e(x["actual_status"])}</span></td></tr>' for x in r);b=f'''<div class="hero"><div><div class="eyebrow">Schools programme</div><h2>Schools Schedule</h2><p>Search and manage all school coaching sessions.</p></div><a class="btn" href="/today">Today / selected day</a></div><div class="card"><input id="s" placeholder="Search school, coach, class or date…" oninput="f()"></div><div class="tw"><table id="t"><tr><th>Date</th><th>School</th><th>Coach</th><th>Class</th><th>Status</th></tr>{trs}</table></div><script>function f(){{let q=s.value.toLowerCase();document.querySelectorAll('#t tr').forEach((r,i)=>{{if(i)r.style.display=r.innerText.toLowerCase().includes(q)?'':'none'}})}}</script>''';return self.out(page('Schedule',b,u))
   if path=='/schools':
@@ -1092,7 +1137,7 @@ class H(BaseHTTPRequestHandler):
    if not data or not name.lower().endswith('.xlsx'):return self.out(page('Upload error','<div class="card"><h2>Please choose a valid .xlsx file.</h2><a class="btn" href="/admin">Back</a></div>',u),400)
    tmp=os.path.join(DATA_DIR,'schools_schedule_upload.xlsx')
    try:
-    open(tmp,'wb').write(data);sessions=parse_schools_xlsx(tmp)
+    open(tmp,'wb').write(data);sessions=parse_schools_xlsx(tmp);gpo=parse_gpo_costs_xlsx(tmp)
     c=dbc()
     # Replace the timetable, never append, to prevent duplicates on each upload.
     c.execute('delete from sessions')
@@ -1101,6 +1146,7 @@ class H(BaseHTTPRequestHandler):
       (s['id'],s['date'],s['day'],s['school'],s['coach'],s['session'],s['start'],s['end'],s['group'],s['age'],s['status'],s['status']))
     c.commit();c.close()
     shutil.copy2(tmp,os.path.join(DATA_DIR,'schools_schedule_current.xlsx'))
+    json.dump(gpo,open(GPO_COST_FILE,'w',encoding='utf8'),indent=2,ensure_ascii=False);globals()['GPO_COSTS']=load_gpo_costs()
    except Exception as ex:
     return self.out(page('Upload error',f'<div class="card"><h2>Could not read schools timetable</h2><p>{e(ex)}</p><a class="btn" href="/admin">Back</a></div>',u),400)
    return self.red('/schedule')
