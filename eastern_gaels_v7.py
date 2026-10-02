@@ -502,17 +502,33 @@ def activate_demographics_from_xlsx(path):
          'senior_ladies':DEMO.get('senior_adult_ladies_count',0),
          'senior_non_playing':DEMO.get('senior_adult_non_playing_count',0)}
 
+def session_sync_key(x):
+ def gv(k,default=''):
+  try:return x[k] if x[k] is not None else default
+  except (KeyError,TypeError):return x.get(k,default) if hasattr(x,'get') else default
+ vals=[gv('date'),gv('school'),gv('coach'),gv('start'),gv('end'),
+       gv('class_group',gv('group')),gv('title',gv('session'))]
+ return '|'.join(' '.join(str(v or '').strip().lower().split()) for v in vals)
+
 def activate_schools_from_xlsx(path):
  global GPO_COSTS
  sessions=parse_schools_xlsx(path)  # validate before touching the live schedule
  gpo=parse_gpo_costs_xlsx(path)
  c=dbc()
  try:
+  # Preserve operational updates made in the dashboard. Google owns timetable
+  # fields; the dashboard owns actual_status, attendance, notes and updated_at.
+  locked={}
+  for old in c.execute('select * from sessions').fetchall():
+   if old['updated_at'] or old['attendance'] is not None or (old['notes'] or '').strip() or old['actual_status']!=old['planned_status']:
+    locked[session_sync_key(old)]=(old['actual_status'],old['attendance'],old['notes'],old['updated_at'])
   c.execute('begin')
   c.execute('delete from sessions')
   for s in sessions:
-   c.execute('insert into sessions(id,date,day,school,coach,title,start,end,class_group,age_group,planned_status,actual_status) values(?,?,?,?,?,?,?,?,?,?,?,?)',
-    (s['id'],s['date'],s['day'],s['school'],s['coach'],s['session'],s['start'],s['end'],s['group'],s['age'],s['status'],s['status']))
+   keep=locked.get(session_sync_key(s))
+   actual,attendance,notes,updated=(keep if keep else (s['status'],None,None,None))
+   c.execute('insert into sessions(id,date,day,school,coach,title,start,end,class_group,age_group,planned_status,actual_status,attendance,notes,updated_at) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    (s['id'],s['date'],s['day'],s['school'],s['coach'],s['session'],s['start'],s['end'],s['group'],s['age'],s['status'],actual,attendance,notes,updated))
   c.commit()
  except:
   c.rollback();raise
@@ -1139,11 +1155,17 @@ class H(BaseHTTPRequestHandler):
    try:
     open(tmp,'wb').write(data);sessions=parse_schools_xlsx(tmp);gpo=parse_gpo_costs_xlsx(tmp)
     c=dbc()
-    # Replace the timetable, never append, to prevent duplicates on each upload.
+    # Replace timetable fields, but retain dashboard-owned session outcomes.
+    locked={}
+    for old in c.execute('select * from sessions').fetchall():
+     if old['updated_at'] or old['attendance'] is not None or (old['notes'] or '').strip() or old['actual_status']!=old['planned_status']:
+      locked[session_sync_key(old)]=(old['actual_status'],old['attendance'],old['notes'],old['updated_at'])
     c.execute('delete from sessions')
     for s in sessions:
-     c.execute('insert into sessions(id,date,day,school,coach,title,start,end,class_group,age_group,planned_status,actual_status) values(?,?,?,?,?,?,?,?,?,?,?,?)',
-      (s['id'],s['date'],s['day'],s['school'],s['coach'],s['session'],s['start'],s['end'],s['group'],s['age'],s['status'],s['status']))
+     keep=locked.get(session_sync_key(s))
+     actual,attendance,notes,updated=(keep if keep else (s['status'],None,None,None))
+     c.execute('insert into sessions(id,date,day,school,coach,title,start,end,class_group,age_group,planned_status,actual_status,attendance,notes,updated_at) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      (s['id'],s['date'],s['day'],s['school'],s['coach'],s['session'],s['start'],s['end'],s['group'],s['age'],s['status'],actual,attendance,notes,updated))
     c.commit();c.close()
     shutil.copy2(tmp,os.path.join(DATA_DIR,'schools_schedule_current.xlsx'))
     json.dump(gpo,open(GPO_COST_FILE,'w',encoding='utf8'),indent=2,ensure_ascii=False);globals()['GPO_COSTS']=load_gpo_costs()
