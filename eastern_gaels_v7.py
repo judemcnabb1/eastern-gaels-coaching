@@ -54,7 +54,7 @@ COACHING=load_coaching()
 # Authentication is supplied through GOOGLE_SERVICE_ACCOUNT_JSON in the environment.
 GOOGLE_DEMOGRAPHICS_SHEET_ID=os.environ.get('GOOGLE_DEMOGRAPHICS_SHEET_ID','1EIG_JZ-bDShJ2mbuI-hLdmTWLNZsaC5EbS4AdB3PMPo')
 GOOGLE_SCHOOLS_SHEET_ID=os.environ.get('GOOGLE_SCHOOLS_SHEET_ID','1F4aC6kgQ3ajaa-fXHYxe_P7M7m_RGPpE0HRirnzkm78')
-GOOGLE_SYNC_MINUTES=max(5,int(os.environ.get('GOOGLE_SYNC_MINUTES','15')))
+GOOGLE_SYNC_MINUTES=max(5,int(os.environ.get('GOOGLE_SYNC_MINUTES','5')))
 GOOGLE_SYNC_ENABLED=os.environ.get('GOOGLE_SYNC_ENABLED','1').strip().lower() not in ('0','false','no','off')
 SYNC_STATUS_FILE=os.path.join(DATA_DIR,'google_sync_status.json')
 SYNC_LOCK=threading.Lock()
@@ -586,6 +586,7 @@ def google_sync_loop():
    d=st.get('demographics',{});s=st.get('schools',{})
    print('Google sync:', 'demographics OK' if d.get('ok') else 'demographics FAILED',
          '|','schools OK' if s.get('ok') else 'schools FAILED')
+   if s.get('ok'):print('GPO totals synced:',s.get('summary',{}).get('gpo_costs',{}))
    if d.get('error'):print('Demographics sync error:',d['error'])
    if s.get('error'):print('Schools sync error:',s['error'])
   except Exception as ex:
@@ -929,7 +930,7 @@ def card(s,admin=False):return f'''<div class="card session"><span class="badge 
 class H(BaseHTTPRequestHandler):
  def log_message(self,*a):pass
  def out(self,x,n=200,h=None):
-  b=x.encode();self.send_response(n);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));[(self.send_header(k,v)) for k,v in (h or {}).items()];self.end_headers();self.wfile.write(b)
+  b=x.encode();self.send_response(n);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('Cache-Control','no-store, no-cache, must-revalidate, max-age=0');self.send_header('Pragma','no-cache');[(self.send_header(k,v)) for k,v in (h or {}).items()];self.end_headers();self.wfile.write(b)
  def red(self,x):self.send_response(303);self.send_header('Location',x);self.end_headers()
  def form(self):
   n=int(self.headers.get('Content-Length','0'));q=parse_qs(self.rfile.read(n).decode());return {k:(v if k=='ids' else v[-1]) for k,v in q.items()}
