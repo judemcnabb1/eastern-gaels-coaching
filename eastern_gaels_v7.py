@@ -505,7 +505,7 @@ def activate_demographics_from_xlsx(path):
 def session_sync_key(x):
  def gv(k,default=''):
   try:return x[k] if x[k] is not None else default
-  except (KeyError,TypeError):return x.get(k,default) if hasattr(x,'get') else default
+  except (KeyError,TypeError,IndexError):return x.get(k,default) if hasattr(x,'get') else default
  vals=[gv('date'),gv('school'),gv('coach'),gv('start'),gv('end'),
        gv('class_group',gv('group')),gv('title',gv('session'))]
  return '|'.join(' '.join(str(v or '').strip().lower().split()) for v in vals)
