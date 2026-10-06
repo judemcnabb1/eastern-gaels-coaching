@@ -1084,12 +1084,21 @@ class H(BaseHTTPRequestHandler):
    w,a=self.vis(u)
    ss=c.execute('select * from sessions '+w+' order by date,start',a).fetchall()
    total=len(ss);done=sum(x['actual_status']=='Completed' for x in ss);cancelled=sum(x['actual_status']=='Cancelled' for x in ss);closed=sum(x['actual_status']=='School Closed' for x in ss);scheduled=sum(x['actual_status']=='Scheduled' for x in ss);attendance=sum((x['attendance'] or 0) for x in ss if x['actual_status']=='Completed')
+   # Coaching hours must come ONLY from sessions whose live dashboard
+   # status is Completed.  Use total_seconds() so an invalid end time that
+   # is earlier than the start time cannot wrap around and add ~24 hours.
+   completed_sessions=[x for x in ss if str(x['actual_status'] or '').strip()=='Completed']
    hours=0.0
-   for x in ss:
-    if x['actual_status']=='Completed' and x['start'] and x['end']:
+   for x in completed_sessions:
+    if x['start'] and x['end']:
      try:
-      st=datetime.strptime(x['start'],'%H:%M');en=datetime.strptime(x['end'],'%H:%M');hours+=max(0,(en-st).seconds/3600)
-     except:pass
+      st=datetime.strptime(str(x['start']).strip(),'%H:%M')
+      en=datetime.strptime(str(x['end']).strip(),'%H:%M')
+      duration=(en-st).total_seconds()/3600
+      if duration > 0:
+       hours+=duration
+     except (TypeError,ValueError):
+      pass
    pct=round(done*100/total) if total else 0
    byschool={};bycoach={};bymonth={}
    for x in ss:
