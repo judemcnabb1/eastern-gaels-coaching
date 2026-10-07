@@ -1184,6 +1184,7 @@ class H(BaseHTTPRequestHandler):
    r=c.execute('select * from sessions order by date,start').fetchall();c.close();o=io.StringIO();w=csv.writer(o);w.writerow(r[0].keys() if r else []);[w.writerow(tuple(x)) for x in r];b=o.getvalue().encode();self.send_response(200);self.send_header('Content-Type','text/csv');self.send_header('Content-Disposition','attachment; filename="eastern-gaels-report.csv"');self.send_header('Content-Length',str(len(b)));self.end_headers();self.wfile.write(b);return
   c.close();return self.out(page('Not found','<div class="card">Page not found.</div>',u),404)
  def do_POST(self):
+  global DEMO,COACHING
   p=urlparse(self.path).path
   if p=='/compliance/garda-upload':
    u=self.need()
@@ -1271,7 +1272,7 @@ class H(BaseHTTPRequestHandler):
     hist=os.path.join(DATA_DIR,'demographics_history');os.makedirs(hist,exist_ok=True)
     if os.path.exists(DEMO_FILE):shutil.copy2(DEMO_FILE,os.path.join(hist,'demographics_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'.json'))
     else:shutil.copy2(DEMO_SOURCE,os.path.join(hist,'demographics_initial_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'.json'))
-    os.replace(pending,DEMO_FILE);global DEMO,COACHING;DEMO=load_demo()
+    os.replace(pending,DEMO_FILE);DEMO=load_demo()
     integrated=DEMO.get('coaching')
     if integrated:
      json.dump(integrated,open(COACH_FILE,'w',encoding='utf8'),indent=2);COACHING=load_coaching()
