@@ -57,6 +57,7 @@ GOOGLE_DEMOGRAPHICS_SHEET_ID=os.environ.get('GOOGLE_DEMOGRAPHICS_SHEET_ID','1EIG
 GOOGLE_SCHOOLS_SHEET_ID=os.environ.get('GOOGLE_SCHOOLS_SHEET_ID','1F4aC6kgQ3ajaa-fXHYxe_P7M7m_RGPpE0HRirnzkm78')
 GOOGLE_SYNC_MINUTES=max(5,int(os.environ.get('GOOGLE_SYNC_MINUTES','5')))
 GOOGLE_SYNC_ENABLED=os.environ.get('GOOGLE_SYNC_ENABLED','1').strip().lower() not in ('0','false','no','off')
+GARDA_VETTING_FOLDER_ID=os.environ.get('GARDA_VETTING_FOLDER_ID','1MuoKe0MbW_cwd71GhjaO_yut1n7hHydu')
 SYNC_STATUS_FILE=os.path.join(DATA_DIR,'google_sync_status.json')
 SYNC_LOCK=threading.Lock()
 GPO_COST_FILE=os.path.join(DATA_DIR,'gpo_costs_current.json')
@@ -479,7 +480,21 @@ def google_credentials():
  except json.JSONDecodeError as ex:raise RuntimeError('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON') from ex
  from google.oauth2 import service_account
  return service_account.Credentials.from_service_account_info(
-  info,scopes=['https://www.googleapis.com/auth/drive.readonly'])
+  info,scopes=['https://www.googleapis.com/auth/drive'])
+
+def google_upload_garda_form(filename,data,coach_name):
+ from google.auth.transport.requests import AuthorizedSession
+ creds=google_credentials();session=AuthorizedSession(creds)
+ safe_coach=re.sub(r'[^A-Za-z0-9 ._\-]', '', str(coach_name or '')).strip() or 'Coach'
+ ext=os.path.splitext(filename)[1].lower()
+ stamp=datetime.now().strftime('%Y%m%d_%H%M%S')
+ drive_name=f'{safe_coach} - Garda Vetting - {stamp}{ext}'
+ metadata={'name':drive_name,'parents':[GARDA_VETTING_FOLDER_ID]}
+ boundary='eg_'+secrets.token_hex(12)
+ body=(f'--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+json.dumps(metadata)+f'\r\n--{boundary}\r\nContent-Type: application/octet-stream\r\n\r\n').encode()+data+f'\r\n--{boundary}--\r\n'.encode()
+ r=session.post('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink',data=body,headers={'Content-Type':f'multipart/related; boundary={boundary}'},timeout=60)
+ if r.status_code not in (200,201): raise RuntimeError(f'Google Drive upload failed ({r.status_code}): {(r.text or "")[:300]}')
+ return r.json()
 
 def google_export_xlsx(file_id,destination):
  from google.auth.transport.requests import AuthorizedSession
@@ -961,6 +976,19 @@ class H(BaseHTTPRequestHandler):
    if body.endswith(b'\r\n'):body=body[:-2]
    return os.path.basename(name.replace('\\','/')),body
   return None,None
+ def upload_file_with_field(self, file_field, text_field):
+  n=int(self.headers.get('Content-Length','0'));raw=self.rfile.read(n);ct=self.headers.get('Content-Type','')
+  m=re.search(r'boundary=(?:\"([^\"]+)\"|([^;]+))',ct)
+  if not m:return None,None,''
+  boundary=(m.group(1) or m.group(2)).strip().encode();name=None;data=None;text=''
+  for part in raw.split(b'--'+boundary):
+   head,sep,body=part.partition(b'\r\n\r\n')
+   if not sep:continue
+   if body.endswith(b'\r\n'):body=body[:-2]
+   if (('name="'+file_field+'"').encode() in head) and b'filename=' in head:
+    fm=re.search(br'filename="([^"]*)"',head);name=os.path.basename((fm.group(1).decode('utf-8',errors='ignore') if fm else 'upload').replace('\\','/'));data=body
+   elif (('name="'+text_field+'"').encode() in head): text=body.decode('utf-8',errors='ignore').strip()
+  return name,data,text
  def user(self):
   z=SimpleCookie(self.headers.get('Cookie'));sid=z.get('egsid');uid=SESS.get(sid.value) if sid else None
   if not uid:return None
@@ -1078,8 +1106,8 @@ class H(BaseHTTPRequestHandler):
   if path=='/compliance':
    c.close();coaches=list(COACHING.get('coaches',{}).values());total=len(coaches);vetted=sum(str(x.get('garda_vetted','')).upper()=='YES' for x in coaches);safe=sum(str(x.get('safeguarding','')).upper()=='YES' for x in coaches);action=sum(expiry_bucket(x)[0] in ('expired','urgent') for x in coaches);rows=''
    for x in sorted(coaches,key=lambda z:z.get('name','')):
-    bucket,days=expiry_bucket(x);exp=x.get('garda_expiry_text') or x.get('garda_expiry') or '-';rows+=f'<tr><td><b>{e(x.get("name"))}</b></td><td>{e(x.get("garda_vetted","Unknown"))}</td><td><span class="badge {bucket}">{e(exp)}</span></td><td>{e(x.get("safeguarding","Unknown"))}</td></tr>'
-   b=f'''<div class="hero"><div><div class="eyebrow">Governance</div><h2>Compliance</h2><p>Garda Vetting and Safeguarding tracked independently.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{vetted}</div><b>Garda vetted</b><small>of {total} coaches</small></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding completed</b><small>of {total} coaches</small></div><div class="card kpi"><div class="stat">{action}</div><b>Expiry action</b><small>expired / within 90 days</small></div></div><div class="grid2"><div class="card chart-card"><h3>Overall compliance</h3>{donut_chart({"Garda vetted":vetted,"Garda outstanding":max(0,total-vetted),"Safeguarding":safe,"Safeguarding outstanding":max(0,total-safe)},center=str(round((vetted+safe)*100/(2*total)))+"%",subtitle="complete")}</div><div class="card"><h3>Coach compliance</h3><div class="tw"><table><tr><th>Coach</th><th>Garda Vetted</th><th>Vetting Expiry</th><th>Safeguarding</th></tr>{rows}</table></div></div></div>''';return self.out(page('Compliance',b,u))
+    bucket,days=expiry_bucket(x);exp=x.get('garda_expiry_text') or x.get('garda_expiry') or '-';coach=e(x.get("name"));rows+=f'<tr><td><b>{coach}</b></td><td>{e(x.get("garda_vetted","Unknown"))}</td><td><span class="badge {bucket}">{e(exp)}</span></td><td>{e(x.get("safeguarding","Unknown"))}</td><td><form method="post" action="/compliance/garda-upload" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center"><input type="hidden" name="coach_name" value="{coach}"><input type="file" name="garda_file" accept=".pdf,.jpg,.jpeg,.png" required style="max-width:180px"><button type="submit">Upload</button></form></td></tr>'
+   b=f'''<div class="hero"><div><div class="eyebrow">Governance</div><h2>Compliance</h2><p>Garda Vetting and Safeguarding tracked independently.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{vetted}</div><b>Garda vetted</b><small>of {total} coaches</small></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding completed</b><small>of {total} coaches</small></div><div class="card kpi"><div class="stat">{action}</div><b>Expiry action</b><small>expired / within 90 days</small></div></div><div class="grid2"><div class="card chart-card"><h3>Overall compliance</h3>{donut_chart({"Garda vetted":vetted,"Garda outstanding":max(0,total-vetted),"Safeguarding":safe,"Safeguarding outstanding":max(0,total-safe)},center=str(round((vetted+safe)*100/(2*total)))+"%",subtitle="complete")}</div><div class="card"><h3>Coach compliance</h3><p class="muted">Upload Garda Vetting forms directly to the club's restricted Google Drive folder. PDF, JPG and PNG accepted.</p><div class="tw"><table><tr><th>Coach</th><th>Garda Vetted</th><th>Vetting Expiry</th><th>Safeguarding</th><th>Vetting Form</th></tr>{rows}</table></div></div></div>''';return self.out(page('Compliance',b,u))
   if path=='/courses':
    c.close();coaches=list(COACHING.get('coaches',{}).values());quals={}
    for x in coaches:qv=str(x.get('qualification','Unknown') or 'Unknown').strip();quals[qv]=quals.get(qv,0)+1
@@ -1157,6 +1185,17 @@ class H(BaseHTTPRequestHandler):
   c.close();return self.out(page('Not found','<div class="card">Page not found.</div>',u),404)
  def do_POST(self):
   p=urlparse(self.path).path
+  if p=='/compliance/garda-upload':
+   u=self.need()
+   if not u:return self.out('Forbidden',403)
+   name,data,coach=self.upload_file_with_field('garda_file','coach_name')
+   allowed=('.pdf','.jpg','.jpeg','.png')
+   if not data or not name or not name.lower().endswith(allowed):return self.out(page('Upload error','<div class="card"><h2>Please choose a PDF, JPG or PNG Garda Vetting form.</h2><a class="btn" href="/compliance">Back</a></div>',u),400)
+   if len(data)>15*1024*1024:return self.out(page('Upload error','<div class="card"><h2>File is too large.</h2><p>Maximum size is 15 MB.</p><a class="btn" href="/compliance">Back</a></div>',u),400)
+   if coach_key(coach) not in COACHING.get('coaches',{}):return self.out(page('Upload error','<div class="card"><h2>Coach was not recognised.</h2><a class="btn" href="/compliance">Back</a></div>',u),400)
+   try: google_upload_garda_form(name,data,coach)
+   except Exception as ex:return self.out(page('Upload error',f'<div class="card"><h2>Could not upload Garda Vetting form</h2><p>{e(ex)}</p><a class="btn" href="/compliance">Back</a></div>',u),500)
+   return self.red('/compliance')
   if p=='/admin/coaching-team/upload':
    u=self.need()
    if not u:return self.out('Forbidden',403)
