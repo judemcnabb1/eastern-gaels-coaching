@@ -2,7 +2,7 @@
 import os,re,json,sqlite3,secrets,hashlib,hmac,csv,io,html,shutil,threading,time,tempfile,gc
 from openpyxl import load_workbook
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
-from urllib.parse import urlparse,parse_qs
+from urllib.parse import urlparse,parse_qs,urlencode
 from http.cookies import SimpleCookie
 from datetime import date,datetime,timedelta
 import calendar
@@ -58,6 +58,11 @@ GOOGLE_SCHOOLS_SHEET_ID=os.environ.get('GOOGLE_SCHOOLS_SHEET_ID','1F4aC6kgQ3ajaa
 GOOGLE_SYNC_MINUTES=max(5,int(os.environ.get('GOOGLE_SYNC_MINUTES','5')))
 GOOGLE_SYNC_ENABLED=os.environ.get('GOOGLE_SYNC_ENABLED','1').strip().lower() not in ('0','false','no','off')
 GARDA_VETTING_FOLDER_ID=os.environ.get('GARDA_VETTING_FOLDER_ID','1MuoKe0MbW_cwd71GhjaO_yut1n7hHydu')
+GOOGLE_OAUTH_CLIENT_ID=os.environ.get('GOOGLE_OAUTH_CLIENT_ID','').strip()
+GOOGLE_OAUTH_CLIENT_SECRET=os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET','').strip()
+GOOGLE_OAUTH_REDIRECT_URI=os.environ.get('GOOGLE_OAUTH_REDIRECT_URI','https://eastern-gaels-coaching.onrender.com/oauth2callback').strip()
+GOOGLE_OAUTH_TOKEN_FILE=os.path.join(DATA_DIR,'google_drive_oauth.json')
+GOOGLE_OAUTH_STATES={}
 SYNC_STATUS_FILE=os.path.join(DATA_DIR,'google_sync_status.json')
 SYNC_LOCK=threading.Lock()
 GPO_COST_FILE=os.path.join(DATA_DIR,'gpo_costs_current.json')
@@ -482,18 +487,34 @@ def google_credentials():
  return service_account.Credentials.from_service_account_info(
   info,scopes=['https://www.googleapis.com/auth/drive'])
 
+def load_google_oauth_token():
+ try:
+  with open(GOOGLE_OAUTH_TOKEN_FILE,encoding='utf8') as f:return json.load(f)
+ except (OSError,json.JSONDecodeError):return {}
+
+def save_google_oauth_token(token):
+ tmp=GOOGLE_OAUTH_TOKEN_FILE+'.tmp'
+ with open(tmp,'w',encoding='utf8') as f:json.dump(token,f,indent=2)
+ os.replace(tmp,GOOGLE_OAUTH_TOKEN_FILE)
+
+def google_oauth_access_token():
+ import requests
+ token=load_google_oauth_token();refresh=token.get('refresh_token','')
+ if not refresh:raise RuntimeError('Google Drive is not connected. Open Compliance and click Connect Google Drive first.')
+ if not GOOGLE_OAUTH_CLIENT_ID or not GOOGLE_OAUTH_CLIENT_SECRET:raise RuntimeError('Google OAuth client ID/secret are not configured in Render.')
+ r=requests.post('https://oauth2.googleapis.com/token',data={'client_id':GOOGLE_OAUTH_CLIENT_ID,'client_secret':GOOGLE_OAUTH_CLIENT_SECRET,'refresh_token':refresh,'grant_type':'refresh_token'},timeout=30)
+ if r.status_code!=200:raise RuntimeError(f'Google OAuth refresh failed ({r.status_code}): {(r.text or "")[:300]}')
+ return r.json().get('access_token','')
+
 def google_upload_garda_form(filename,data,coach_name):
- from google.auth.transport.requests import AuthorizedSession
- creds=google_credentials();session=AuthorizedSession(creds)
+ import requests
+ access=google_oauth_access_token()
  safe_coach=re.sub(r'[^A-Za-z0-9 ._\-]', '', str(coach_name or '')).strip() or 'Coach'
- ext=os.path.splitext(filename)[1].lower()
- stamp=datetime.now().strftime('%Y%m%d_%H%M%S')
- drive_name=f'{safe_coach} - Garda Vetting - {stamp}{ext}'
- metadata={'name':drive_name,'parents':[GARDA_VETTING_FOLDER_ID]}
- boundary='eg_'+secrets.token_hex(12)
+ ext=os.path.splitext(filename)[1].lower();stamp=datetime.now().strftime('%Y%m%d_%H%M%S');drive_name=f'{safe_coach} - Garda Vetting - {stamp}{ext}'
+ metadata={'name':drive_name,'parents':[GARDA_VETTING_FOLDER_ID]};boundary='eg_'+secrets.token_hex(12)
  body=(f'--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+json.dumps(metadata)+f'\r\n--{boundary}\r\nContent-Type: application/octet-stream\r\n\r\n').encode()+data+f'\r\n--{boundary}--\r\n'.encode()
- r=session.post('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink',data=body,headers={'Content-Type':f'multipart/related; boundary={boundary}'},timeout=60)
- if r.status_code not in (200,201): raise RuntimeError(f'Google Drive upload failed ({r.status_code}): {(r.text or "")[:300]}')
+ r=requests.post('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink',data=body,headers={'Authorization':'Bearer '+access,'Content-Type':f'multipart/related; boundary={boundary}'},timeout=60)
+ if r.status_code not in (200,201):raise RuntimeError(f'Google Drive upload failed ({r.status_code}): {(r.text or "")[:300]}')
  return r.json()
 
 def google_export_xlsx(file_id,destination):
@@ -1025,6 +1046,25 @@ class H(BaseHTTPRequestHandler):
    z=SimpleCookie(self.headers.get('Cookie'));sid=z.get('egsid');SESS.pop(sid.value,None) if sid else None;c.close();self.send_response(303);self.send_header('Location','/login');self.send_header('Set-Cookie','egsid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax');self.end_headers();return
   u=self.need()
   if not u:c.close();return
+  if path=='/google-oauth/start':
+   if not GOOGLE_OAUTH_CLIENT_ID or not GOOGLE_OAUTH_CLIENT_SECRET:
+    c.close();return self.out(page('Google Drive','<div class="card"><h2>Google OAuth is not configured in Render.</h2><a class="btn" href="/compliance">Back</a></div>',u),500)
+   state=secrets.token_urlsafe(32);GOOGLE_OAUTH_STATES[state]={'uid':u['id'],'expires':time.time()+600}
+   params={'client_id':GOOGLE_OAUTH_CLIENT_ID,'redirect_uri':GOOGLE_OAUTH_REDIRECT_URI,'response_type':'code','scope':'https://www.googleapis.com/auth/drive','access_type':'offline','prompt':'consent','state':state}
+   c.close();return self.red('https://accounts.google.com/o/oauth2/v2/auth?'+urlencode(params))
+  if path=='/oauth2callback':
+   import requests
+   state=q.get('state',[''])[0];code=q.get('code',[''])[0];err=q.get('error',[''])[0];st=GOOGLE_OAUTH_STATES.pop(state,None)
+   if err or not st or st.get('uid')!=u['id'] or st.get('expires',0)<time.time() or not code:
+    c.close();return self.out(page('Google Drive','<div class="card"><h2>Google Drive connection was not completed.</h2><p>'+e(err or 'Invalid or expired OAuth response.')+'</p><a class="btn" href="/compliance">Back</a></div>',u),400)
+   r=requests.post('https://oauth2.googleapis.com/token',data={'client_id':GOOGLE_OAUTH_CLIENT_ID,'client_secret':GOOGLE_OAUTH_CLIENT_SECRET,'code':code,'grant_type':'authorization_code','redirect_uri':GOOGLE_OAUTH_REDIRECT_URI},timeout=30)
+   if r.status_code!=200:
+    c.close();return self.out(page('Google Drive',f'<div class="card"><h2>Could not connect Google Drive</h2><p>{e((r.text or "")[:500])}</p><a class="btn" href="/compliance">Back</a></div>',u),500)
+   tok=r.json();oldtok=load_google_oauth_token();refresh=tok.get('refresh_token') or oldtok.get('refresh_token')
+   if not refresh:
+    c.close();return self.out(page('Google Drive','<div class="card"><h2>No refresh token was returned by Google.</h2><p>Please try Connect Google Drive again.</p><a class="btn" href="/compliance">Back</a></div>',u),500)
+   save_google_oauth_token({'refresh_token':refresh,'connected_at':datetime.now().isoformat(timespec='seconds')})
+   c.close();return self.red('/compliance')
   if path.startswith('/members/'):
    group=path.rstrip('/').split('/')[-1]
    body=adult_members_drilldown(group)
@@ -1104,10 +1144,10 @@ class H(BaseHTTPRequestHandler):
    b=f'''<div class="eyebrow">People & teams</div><h2>Coaches & Teams</h2><p class="muted">Garda Vetting and Safeguarding are tracked independently. Vetting expiry warnings apply only when Garda Vetted is Yes.</p><div class="grid"><div class="card kpi"><div class="stat">{len(coaches)}</div><b>Total coaches</b></div><div class="card kpi"><div class="stat">{vetted}</div><b>Garda vetted</b><small>of {len(coaches)}</small></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding completed</b><small>of {len(coaches)}</small></div><div class="card kpi"><div class="stat">{qual}</div><b>Qualified coaches</b></div><div class="card kpi"><div class="stat">{buckets['expired']+buckets['urgent']}</div><b>Vetting expiry action</b><small>expired / within 90 days</small></div></div><div class="card"><h3>Coach compliance</h3><div class="tw"><table><tr><th>Coach</th><th>Garda Vetted</th><th>Vetting Expiry</th><th>Safeguarding</th><th>Qualification</th><th>Teams</th></tr>{rows}</table></div></div><h3>Coaching pool</h3><div class="grid">{teamcards}</div>'''
    return self.out(page('Coaching Team',b,u))
   if path=='/compliance':
-   c.close();coaches=list(COACHING.get('coaches',{}).values());total=len(coaches);vetted=sum(str(x.get('garda_vetted','')).upper()=='YES' for x in coaches);safe=sum(str(x.get('safeguarding','')).upper()=='YES' for x in coaches);action=sum(expiry_bucket(x)[0] in ('expired','urgent') for x in coaches);rows=''
+   c.close();coaches=list(COACHING.get('coaches',{}).values());total=len(coaches);vetted=sum(str(x.get('garda_vetted','')).upper()=='YES' for x in coaches);safe=sum(str(x.get('safeguarding','')).upper()=='YES' for x in coaches);action=sum(expiry_bucket(x)[0] in ('expired','urgent') for x in coaches);rows='';drive_connected=bool(load_google_oauth_token().get('refresh_token'))
    for x in sorted(coaches,key=lambda z:z.get('name','')):
     bucket,days=expiry_bucket(x);exp=x.get('garda_expiry_text') or x.get('garda_expiry') or '-';coach=e(x.get("name"));rows+=f'<tr><td><b>{coach}</b></td><td>{e(x.get("garda_vetted","Unknown"))}</td><td><span class="badge {bucket}">{e(exp)}</span></td><td>{e(x.get("safeguarding","Unknown"))}</td><td><form method="post" action="/compliance/garda-upload" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center"><input type="hidden" name="coach_name" value="{coach}"><input type="file" name="garda_file" accept=".pdf,.jpg,.jpeg,.png" required style="max-width:180px"><button type="submit">Upload</button></form></td></tr>'
-   b=f'''<div class="hero"><div><div class="eyebrow">Governance</div><h2>Compliance</h2><p>Garda Vetting and Safeguarding tracked independently.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{vetted}</div><b>Garda vetted</b><small>of {total} coaches</small></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding completed</b><small>of {total} coaches</small></div><div class="card kpi"><div class="stat">{action}</div><b>Expiry action</b><small>expired / within 90 days</small></div></div><div class="grid2"><div class="card chart-card"><h3>Overall compliance</h3>{donut_chart({"Garda vetted":vetted,"Garda outstanding":max(0,total-vetted),"Safeguarding":safe,"Safeguarding outstanding":max(0,total-safe)},center=str(round((vetted+safe)*100/(2*total)))+"%",subtitle="complete")}</div><div class="card"><h3>Coach compliance</h3><p class="muted">Upload Garda Vetting forms directly to the club's restricted Google Drive folder. PDF, JPG and PNG accepted.</p><div class="tw"><table><tr><th>Coach</th><th>Garda Vetted</th><th>Vetting Expiry</th><th>Safeguarding</th><th>Vetting Form</th></tr>{rows}</table></div></div></div>''';return self.out(page('Compliance',b,u))
+   b=f'''<div class="hero"><div><div class="eyebrow">Governance</div><h2>Compliance</h2><p>Garda Vetting and Safeguarding tracked independently.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{vetted}</div><b>Garda vetted</b><small>of {total} coaches</small></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding completed</b><small>of {total} coaches</small></div><div class="card kpi"><div class="stat">{action}</div><b>Expiry action</b><small>expired / within 90 days</small></div></div><div class="grid2"><div class="card chart-card"><h3>Overall compliance</h3>{donut_chart({"Garda vetted":vetted,"Garda outstanding":max(0,total-vetted),"Safeguarding":safe,"Safeguarding outstanding":max(0,total-safe)},center=str(round((vetted+safe)*100/(2*total)))+"%",subtitle="complete")}</div><div class="card"><h3>Coach compliance</h3><p class="muted">Upload Garda Vetting forms directly to the club's restricted Google Drive folder. PDF, JPG and PNG accepted.</p>{'<p><span class="badge valid">Google Drive connected</span></p>' if drive_connected else '<p><a class="btn" href="/google-oauth/start">Connect Google Drive</a></p>'}<div class="tw"><table><tr><th>Coach</th><th>Garda Vetted</th><th>Vetting Expiry</th><th>Safeguarding</th><th>Vetting Form</th></tr>{rows}</table></div></div></div>''';return self.out(page('Compliance',b,u))
   if path=='/courses':
    c.close();coaches=list(COACHING.get('coaches',{}).values());quals={}
    for x in coaches:qv=str(x.get('qualification','Unknown') or 'Unknown').strip();quals[qv]=quals.get(qv,0)+1
