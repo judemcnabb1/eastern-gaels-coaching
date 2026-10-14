@@ -345,17 +345,28 @@ def parse_demographics_xlsx(path):
     header_row=r;name_col=row_headers['PLAYER NAME'];school_col=row_headers['SCHOOL'];dob_col=row_headers.get('DATE OF BIRTH');break
   if not (header_row and name_col and school_col):
    continue
-  # First prefer an explicit Uxx / UNDER xx marker in the title or top rows.
-  # The worksheet tab name is authoritative: U13 and U14 must stay separate,
-  # even if a heading inside either sheet mentions another age group.
+  # Trust only complete, valid age-group labels in worksheet names.
+  # Excel truncates long tab names at 31 characters (U14 can become U1).
   tab_match=re.search(r'(?i)\bU\s*(\d{1,2})\b',sheet_name) or re.search(r'(?i)UNDER\s*(\d{1,2})',sheet_name)
-  probe=' '.join(str(v or '') for row in pws.iter_rows(min_row=1,max_row=min(6,pws.max_row or 6),max_col=min(10,pws.max_column or 10),values_only=True) for v in row)
-  # A truncated U1 tab is ambiguous; use its heading or birth years instead.
-  if tab_match and int(tab_match.group(1)) == 1: tab_match=None
-  m=tab_match or re.search(r'(?i)UNDER\s*(\d{1,2})',probe) or re.search(r'(?i)\bU\s*(\d{1,2})\b',probe)
-  group=('U'+str(int(m.group(1)))) if m and int(m.group(1)) >= 5 else None
-  # If the sheet has a generic name, infer the group from DOB birth years and
-  # the latest populated membership year (e.g. 2026 - 2015 = U11).
+  tab_age=int(tab_match.group(1)) if tab_match else None
+  group=('U'+str(tab_age)) if tab_age is not None and 5 <= tab_age <= 18 else None
+  # For truncated or generic tabs, the AGE column is more reliable than
+  # headings copied from another worksheet.
+  if not group:
+   age_col=None
+   for c in range(1,min(21,(pws.max_column or 20)+1)):
+    if clean_name(pws.cell(header_row,c).value)=='AGE': age_col=c;break
+   if age_col:
+    from collections import Counter
+    ages=[]
+    for rr in pws.iter_rows(min_row=header_row+1,max_col=max(age_col,name_col),values_only=True):
+     if not str(rr[name_col-1] or '').strip(): continue
+     try:
+      age=int(float(rr[age_col-1]))
+      if 5 <= age <= 18: ages.append(age)
+     except (TypeError,ValueError): pass
+    if ages: group='U'+str(Counter(ages).most_common(1)[0][0])
+  # DOB inference follows below if AGE is unavailable.
   if not group and dob_col:
    birth_years=[]
    for row in pws.iter_rows(min_row=header_row+1,max_col=dob_col,values_only=True):
@@ -383,6 +394,10 @@ def parse_demographics_xlsx(path):
      ref_year=datetime.now().year
     inferred=ref_year-birth_year
     if 4 <= inferred <= 18: group='U'+str(inferred)
+  if not group:
+   probe=' '.join(str(v or '') for row in pws.iter_rows(min_row=1,max_row=min(6,pws.max_row or 6),max_col=min(10,pws.max_column or 10),values_only=True) for v in row)
+   heading=re.search(r'(?i)UNDER\s*(\d{1,2})',probe) or re.search(r'(?i)\bU\s*(\d{1,2})\b',probe)
+   if heading and 5 <= int(heading.group(1)) <= 18: group='U'+str(int(heading.group(1)))
   if not group:
    warnings.append(f'Could not determine age group for player worksheet: {sheet_name}')
    continue
