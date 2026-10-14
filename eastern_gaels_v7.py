@@ -350,8 +350,10 @@ def parse_demographics_xlsx(path):
   # even if a heading inside either sheet mentions another age group.
   tab_match=re.search(r'(?i)\bU\s*(\d{1,2})\b',sheet_name) or re.search(r'(?i)UNDER\s*(\d{1,2})',sheet_name)
   probe=' '.join(str(v or '') for row in pws.iter_rows(min_row=1,max_row=min(6,pws.max_row or 6),max_col=min(10,pws.max_column or 10),values_only=True) for v in row)
+  # A truncated U1 tab is ambiguous; use its heading or birth years instead.
+  if tab_match and int(tab_match.group(1)) == 1: tab_match=None
   m=tab_match or re.search(r'(?i)UNDER\s*(\d{1,2})',probe) or re.search(r'(?i)\bU\s*(\d{1,2})\b',probe)
-  group=('U'+str(int(m.group(1)))) if m else None
+  group=('U'+str(int(m.group(1)))) if m and int(m.group(1)) >= 5 else None
   # If the sheet has a generic name, infer the group from DOB birth years and
   # the latest populated membership year (e.g. 2026 - 2015 = U11).
   if not group and dob_col:
