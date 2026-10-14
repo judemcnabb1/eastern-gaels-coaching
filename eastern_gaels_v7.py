@@ -346,8 +346,11 @@ def parse_demographics_xlsx(path):
   if not (header_row and name_col and school_col):
    continue
   # First prefer an explicit Uxx / UNDER xx marker in the title or top rows.
-  probe=sheet_name+' '+ ' '.join(str(v or '') for row in pws.iter_rows(min_row=1,max_row=min(6,pws.max_row or 6),max_col=min(10,pws.max_column or 10),values_only=True) for v in row)
-  m=re.search(r'(?i)UNDER\s*(\d{1,2})',probe) or re.search(r'(?i)\bU\s*(\d{1,2})\b',probe)
+  # The worksheet tab name is authoritative: U13 and U14 must stay separate,
+  # even if a heading inside either sheet mentions another age group.
+  tab_match=re.search(r'(?i)\bU\s*(\d{1,2})\b',sheet_name) or re.search(r'(?i)UNDER\s*(\d{1,2})',sheet_name)
+  probe=' '.join(str(v or '') for row in pws.iter_rows(min_row=1,max_row=min(6,pws.max_row or 6),max_col=min(10,pws.max_column or 10),values_only=True) for v in row)
+  m=tab_match or re.search(r'(?i)UNDER\s*(\d{1,2})',probe) or re.search(r'(?i)\bU\s*(\d{1,2})\b',probe)
   group=('U'+str(int(m.group(1)))) if m else None
   # If the sheet has a generic name, infer the group from DOB birth years and
   # the latest populated membership year (e.g. 2026 - 2015 = U11).
@@ -388,11 +391,15 @@ def parse_demographics_xlsx(path):
    if not player: continue
    if clean_name(player).startswith('UNDER '): continue
    rows.append({'name':player,'school':school})
-  if rows: players_by_age[group]=rows
+  if rows: players_by_age.setdefault(group,[]).extend(rows)
 
  # Actual player-list tabs are authoritative for membership by age group.
  # This prevents stale summary cells from leaving the dashboard one player behind.
  for g,rows in players_by_age.items():
+  if g not in age_totals:
+   age_totals[g]=len(rows)
+   age_areas[g]={}
+   age_schools[g]={}
   if g in age_totals:
    summary_total=age_totals[g]
    actual_total=len(rows)
@@ -1132,13 +1139,13 @@ class H(BaseHTTPRequestHandler):
     mx=max([int(v) for v in data.values()] or [1]);return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
    age=dict(sorted(DEMO['age_totals'].items(),key=lambda x:int(x[0][1:])))
    agelinks=''.join(f'<a class="chartlink" href="/demographics/age?group={e(k)}"><div class="card"><h3>{e(k)}</h3><div class="stat">{int(v)}</div><div class="muted">players · tap for catchment & schools</div></div></a>' for k,v in age.items())
-   b=f'''<div class="eyebrow">Club profile</div><h2>Club Demographics</h2><p class="muted">Eastern Gaels player profile · {latest_year}</p><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Players</b><small>{latest_year} club population</small></div><div class="card kpi"><div class="stat">+{growthpct}%</div><b>Year-on-year growth</b><small>{prev} players in {prev_year}</small></div><div class="card kpi"><div class="stat">{len(DEMO['age_totals'])}</div><b>Age groups</b><small>U5 through U12</small></div><div class="card kpi"><div class="stat">{games}</div><b>Games played</b><small>recorded in source workbook</small></div></div><div class="grid2"><div class="card chart-card"><h3>Membership growth</h3>{svg_line_area(DEMO['growth'])}</div><div class="card chart-card"><h3>Players by age group</h3>{svg_bar_chart(age)}</div></div><div class="grid2"><div class="card chart-card"><h3>Where our players live</h3>{donut_chart(DEMO['catchment'],subtitle='players')}</div><div class="card chart-card"><h3>Schools represented</h3>{hbar_chart(DEMO['school_totals'])}</div></div><div class="card chart-card"><h3>Games played by team</h3>{svg_bar_chart(DEMO['games'])}</div><h3>Age-group detail</h3><div class="grid">{agelinks}</div>''';return self.out(page('Club Demographics',b,u))
+   b=f'''<div class="eyebrow">Club profile</div><h2>Club Demographics</h2><p class="muted">Eastern Gaels player profile · {latest_year}</p><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Players</b><small>{latest_year} club population</small></div><div class="card kpi"><div class="stat">+{growthpct}%</div><b>Year-on-year growth</b><small>{prev} players in {prev_year}</small></div><div class="card kpi"><div class="stat">{len(DEMO['age_totals'])}</div><b>Age groups</b><small>U5 through U14</small></div><div class="card kpi"><div class="stat">{games}</div><b>Games played</b><small>recorded in source workbook</small></div></div><div class="grid2"><div class="card chart-card"><h3>Membership growth</h3>{svg_line_area(DEMO['growth'])}</div><div class="card chart-card"><h3>Players by age group</h3>{svg_bar_chart(age)}</div></div><div class="grid2"><div class="card chart-card"><h3>Where our players live</h3>{donut_chart(DEMO['catchment'],subtitle='players')}</div><div class="card chart-card"><h3>Schools represented</h3>{hbar_chart(DEMO['school_totals'])}</div></div><div class="card chart-card"><h3>Games played by team</h3>{svg_bar_chart(DEMO['games'])}</div><h3>Age-group detail</h3><div class="grid">{agelinks}</div>''';return self.out(page('Club Demographics',b,u))
   if path=='/demographics/age':
    c.close();g=q.get('group',[''])[0].upper()
    if g not in DEMO['age_totals']:return self.red('/demographics')
    def bars2(data):
     mx=max([int(v) for v in data.values()] or [1]);return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
-   players=DEMO.get('players_by_age',{}).get(g,[]);prows=''.join(f'<tr><td>{e(x.get("name",""))}</td><td>{e(x.get("school",""))}</td></tr>' for x in players);plist=(f'<div class="card"><h3>{e(g)} Players</h3><p class="muted">{len(players)} player names imported. Only player name and school are stored/displayed.</p><div class="tw"><table><tr><th>Player Name</th><th>School</th></tr>{prows}</table></div></div>' if players else '<div class="card"><h3>Players</h3><p class="muted">No player-name list has been imported for this age group yet.</p></div>');total=int(DEMO['age_totals'][g]);b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div>{plist}<div class="grid"><div class="card"><h3>Residential catchment</h3>{bars2(DEMO['age_areas'][g])}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO['age_schools'][g])}</div></div><div class="card"><p class="muted">Figures are imported from the updated Eastern Gaels demographics workbook. Zero-value categories are retained so the source structure remains visible.</p></div>''';return self.out(page(g+' Demographics',b,u))
+   players=DEMO.get('players_by_age',{}).get(g,[]);prows=''.join(f'<tr><td>{e(x.get("name",""))}</td><td>{e(x.get("school",""))}</td></tr>' for x in players);plist=(f'<div class="card"><h3>{e(g)} Players</h3><p class="muted">{len(players)} player names imported. Only player name and school are stored/displayed.</p><div class="tw"><table><tr><th>Player Name</th><th>School</th></tr>{prows}</table></div></div>' if players else '<div class="card"><h3>Players</h3><p class="muted">No player-name list has been imported for this age group yet.</p></div>');total=int(DEMO['age_totals'][g]);b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div>{plist}<div class="grid"><div class="card"><h3>Residential catchment</h3>{bars2(DEMO.get('age_areas',{}).get(g,{}))}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO.get('age_schools',{}).get(g,{}))}</div></div><div class="card"><p class="muted">Figures are imported from the updated Eastern Gaels demographics workbook. Zero-value categories are retained so the source structure remains visible.</p></div>''';return self.out(page(g+' Demographics',b,u))
   if path=='/coaching-team':
    c.close();coaches=list(COACHING.get('coaches',{}).values());teams=COACHING.get('teams',{});buckets={'expired':0,'urgent':0,'warning':0,'unknown':0,'unknown_expiry':0,'not_vetted':0,'valid':0}
    for x in coaches:buckets[expiry_bucket(x)[0]]+=1
@@ -1220,7 +1227,7 @@ class H(BaseHTTPRequestHandler):
    c.close();pending=os.path.join(DATA_DIR,'demographics_pending.json')
    if not os.path.exists(pending):return self.red('/admin')
    nd=json.load(open(pending,encoding='utf8'));old=load_demo();latest=lambda d:max((int(y) for y in d.get('growth',{}) if str(y).isdigit()),default=2026);ny=latest(nd);oy=latest(old);nt=nd.get('growth',{}).get(str(ny),sum(nd.get('age_totals',{}).values()));ot=old.get('growth',{}).get(str(oy),sum(old.get('age_totals',{}).values()));
-   changes=''.join(f'<tr><td>{e(g)}</td><td>{old.get("age_totals",{}).get(g,0)}</td><td>{nd.get("age_totals",{}).get(g,0)}</td><td>{nd.get("age_totals",{}).get(g,0)-old.get("age_totals",{}).get(g,0):+d}</td></tr>' for g in ['U5','U6','U7','U8','U9','U10','U11','U12'])
+   changes=''.join(f'<tr><td>{e(g)}</td><td>{old.get("age_totals",{}).get(g,0)}</td><td>{nd.get("age_totals",{}).get(g,0)}</td><td>{nd.get("age_totals",{}).get(g,0)-old.get("age_totals",{}).get(g,0):+d}</td></tr>' for g in ['U5','U6','U7','U8','U9','U10','U11','U12','U13','U14'])
    warns=''.join(f'<li>{e(x)}</li>' for x in nd.get('warnings',[])) or '<li>No validation warnings.</li>'
    b=f'''<h2>Preview demographics import</h2><div class="grid"><div class="card kpi"><div class="stat">{ot}</div><b>Current players</b><small>{oy}</small></div><div class="card kpi"><div class="stat">{nt}</div><b>Uploaded players</b><small>{ny}</small></div><div class="card kpi"><div class="stat">{nt-ot:+d}</div><b>Change</b><small>players</small></div></div><div class="card"><h3>Age-group changes</h3><div class="tw"><table><tr><th>Age</th><th>Current</th><th>Uploaded</th><th>Change</th></tr>{changes}</table></div></div><div class="card"><h3>Validation</h3><ul>{warns}</ul><p class="muted">Warnings do not block import; review them before confirming.</p></div><div class="card"><form method="post" action="/admin/demographics/confirm"><div class="actions"><button>Confirm import</button><a class="btn secondary" href="/admin">Cancel</a></div></form></div>'''
    return self.out(page('Preview demographics',b,u))
