@@ -352,7 +352,7 @@ def parse_demographics_xlsx(path):
   group=('U'+str(tab_age)) if tab_age is not None and 5 <= tab_age <= 18 else None
   # Workbook's sequential player tabs are team cohorts, not individual ages.
   # Players may be one year younger than their team designation.
-  team_tabs={'Sheet25':'U13','Sheet26':'U12','Sheet27':'U11','Sheet28':'U10'}
+  team_tabs={'Players Names By Age Group - U1':'U13','Sheet25':'U12','Sheet26':'U11','Sheet27':'U10'}
   if sheet_name in team_tabs: group=team_tabs[sheet_name]
   # For truncated or generic tabs, the AGE column is more reliable than
   # headings copied from another worksheet.
