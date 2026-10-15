@@ -313,13 +313,19 @@ def parse_demographics_xlsx(path):
    if key in ('TOTAL BOYS','TOTAL GIRLS'):
     value=vals[j+1] if j+1<len(vals) else None
     juvenile_gender['Boys' if key=='TOTAL BOYS' else 'Girls']=num(value)
- for col,g in zip([1,4,7,10,13,16,19,22],['U12','U11','U10','U9','U8','U7','U6','U5']):
+ # Discover age-group columns from the actual workbook headings, not fixed positions.
+ import re
+ for col in range(1,45):
+  heading=clean_name(agews.cell(1,col).value)
+  match=re.match(r'^U(\d+) PLAYER AREA$',heading)
+  if not match:continue
+  g='U'+match.group(1)
   areas={clean_name(agews.cell(r,col).value):num(agews.cell(r,col+1).value) for r in range(2,8) if agews.cell(r,col).value}
   schools={clean_name(agews.cell(r,col).value):num(agews.cell(r,col+1).value) for r in range(10,17) if agews.cell(r,col).value}
   total=num(agews.cell(8,col+1).value) or sum(areas.values())
   age_totals[g]=total;age_areas[g]=areas;age_schools[g]=schools
-  if sum(areas.values())!=total:warnings.append(f'{g} area breakdown sums to {sum(areas.values())}, total is {total}')
-  if sum(schools.values())!=total:warnings.append(f'{g} school breakdown sums to {sum(schools.values())}, total is {total}')
+  if sum(areas.values())!=total:warnings.append(f'{g} area breakdown sums to {sum(areas.values())}, summary total is {total}')
+  if sum(schools.values())!=total:warnings.append(f'{g} school breakdown sums to {sum(schools.values())}, summary total is {total}')
  def two_col(prefix,skip_totals=True):
   ws=find_sheet(prefix);d={}
   for row in ws.iter_rows(min_row=2,max_col=2,values_only=True):
@@ -428,16 +434,15 @@ def parse_demographics_xlsx(path):
     warnings.append(f'{g} summary total is {summary_total}; player tab contains {actual_total}. Using player-tab count.')
    age_totals[g]=actual_total
 
- # Rebuild school figures from the same player rows used for group totals.
- # Do not present stale summary catchment figures as current group data.
+ # School figures come from player lists. Preserve workbook catchment data even
+ # when its independently maintained summary is out of date.
  from collections import Counter
  for g,rows in players_by_age.items():
-  # Count every player, including those whose school is not recorded.
   school_counts=Counter(clean_name(x.get('school','')) or 'NOT RECORDED' for x in rows)
   age_schools[g]=dict(school_counts)
-  if sum(age_areas.get(g,{}).values()) != len(rows):
-   warnings.append(f'{g} residential catchment summary does not match player list; hiding outdated breakdown.')
-   age_areas[g]={}
+  area_sum=sum(age_areas.get(g,{}).values())
+  if area_sum!=len(rows):
+   warnings.append(f'{g} residential catchment sums to {area_sum}, player list has {len(rows)}; displaying source breakdown with warning.')
 
  # Senior Adult Non-Playing Members: count only the numbered member list,
  # not the yearly summary rows at the top of the worksheet.
@@ -1180,7 +1185,7 @@ class H(BaseHTTPRequestHandler):
      return '<p class="muted">No verified figures available.</p>'
     mx=max(1,max([int(v) for v in data.values()] or [0]))
     return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
-   players=DEMO.get('players_by_age',{}).get(g,[]);prows=''.join(f'<tr><td>{e(x.get("name",""))}</td><td>{e(x.get("school",""))}</td></tr>' for x in players);plist=(f'<div class="card"><h3>{e(g)} Players</h3><p class="muted">{len(players)} player names imported. Only player name and school are stored/displayed.</p><div class="tw"><table><tr><th>Player Name</th><th>School</th></tr>{prows}</table></div></div>' if players else '<div class="card"><h3>Players</h3><p class="muted">No player-name list has been imported for this age group yet.</p></div>');total=int(DEMO['age_totals'][g]);b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div>{plist}<div class="grid"><div class="card"><h3>Residential catchment</h3>{bars2(DEMO.get('age_areas',{}).get(g,{})) if DEMO.get('age_areas',{}).get(g,{}) else '<p class="muted">Verified catchment figures unavailable for this group.</p>'}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO.get('age_schools',{}).get(g,{}))}</div></div><div class="card"><p class="muted">School figures are calculated from the imported player list; missing schools are shown as Not recorded. Residential catchment figures are displayed only where the workbook's group breakdown agrees with the player total.</p></div>''';return self.out(page(g+' Demographics',b,u))
+   players=DEMO.get('players_by_age',{}).get(g,[]);prows=''.join(f'<tr><td>{e(x.get("name",""))}</td><td>{e(x.get("school",""))}</td></tr>' for x in players);plist=(f'<div class="card"><h3>{e(g)} Players</h3><p class="muted">{len(players)} player names imported. Only player name and school are stored/displayed.</p><div class="tw"><table><tr><th>Player Name</th><th>School</th></tr>{prows}</table></div></div>' if players else '<div class="card"><h3>Players</h3><p class="muted">No player-name list has been imported for this age group yet.</p></div>');total=int(DEMO['age_totals'][g]);catchment_warning='<p class="muted">Workbook catchment total differs from player count.</p>' if sum(DEMO.get('age_areas',{}).get(g,{}).values()) != total else '';b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div>{plist}<div class="grid"><div class="card"><h3>Residential catchment</h3>{catchment_warning}{bars2(DEMO.get('age_areas',{}).get(g,{})) if DEMO.get('age_areas',{}).get(g,{}) else '<p class="muted">No catchment breakdown in workbook.</p>'}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO.get('age_schools',{}).get(g,{}))}</div></div><div class="card"><p class="muted">School figures are calculated from the imported player list; missing schools are shown as Not recorded. Residential catchment figures are taken from the workbook summary; their totals may differ from the current player list.</p></div>''';return self.out(page(g+' Demographics',b,u))
   if path=='/coaching-team':
    c.close();coaches=list(COACHING.get('coaches',{}).values());teams=COACHING.get('teams',{});buckets={'expired':0,'urgent':0,'warning':0,'unknown':0,'unknown_expiry':0,'not_vetted':0,'valid':0}
    for x in coaches:buckets[expiry_bucket(x)[0]]+=1
