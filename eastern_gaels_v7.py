@@ -284,6 +284,17 @@ def parse_integrated_tabs(wb):
  events.sort(key=lambda x:(x.get('sort_date','9999'),x.get('time','99:99')))
  return {'coaches':coaches,'teams':teams,'qualification_summary':qual_summary,'imported_at':datetime.now().isoformat(timespec='seconds')},events
 
+def payment_section(members,title='2026 membership payments'):
+ from collections import Counter
+ counts=Counter(x.get('paid','NOT RECORDED') for x in members)
+ yes=counts['YES'];no=counts['NO'];unknown=len(members)-yes-no
+ # Unknown statuses are not counted as unpaid.
+ pie=pie_chart({'Paid':yes,'Not paid':no,'Not recorded':unknown}) if members else '<p class="muted">No member records.</p>'
+ unpaid=''.join('<tr><td>'+e(x.get('name',''))+'</td><td>Not paid</td></tr>' for x in members if x.get('paid')=='NO')
+ rows=('<div class="tw"><table><tr><th>Member name</th><th>Status</th></tr>'+unpaid+'</table></div>') if no else '<p class="muted">No unpaid members recorded.</p>'
+ note=('<p class="muted">'+str(unknown)+' membership status(es) not recorded; excluded from the unpaid list.</p>') if unknown else ''
+ return '<div class="grid2"><div class="card chart-card"><h3>'+e(title)+'</h3>'+pie+'<p class="muted">Paid '+str(yes)+' · Not paid '+str(no)+' · Not recorded '+str(unknown)+'</p>'+note+'</div><div class="card"><h3>Members not paid ('+str(no)+')</h3>'+rows+'</div></div>'
+
 def parse_demographics_xlsx(path):
  wb=load_workbook(path,data_only=True,read_only=True)
  names=wb.sheetnames
@@ -341,14 +352,14 @@ def parse_demographics_xlsx(path):
  players_by_age={}
  for sheet_name in names:
   pws=wb[sheet_name]
-  header_row=None;name_col=None;school_col=None;dob_col=None
+  header_row=None;name_col=None;school_col=None;dob_col=None;paid_col=None
   for r in range(1,min(11,(pws.max_row or 10)+1)):
    row_headers={}
    for c in range(1,min(21,(pws.max_column or 20)+1)):
     h=clean_name(pws.cell(r,c).value)
     row_headers[h]=c
    if 'PLAYER NAME' in row_headers and 'SCHOOL' in row_headers:
-    header_row=r;name_col=row_headers['PLAYER NAME'];school_col=row_headers['SCHOOL'];dob_col=row_headers.get('DATE OF BIRTH');break
+    header_row=r;name_col=row_headers['PLAYER NAME'];school_col=row_headers['SCHOOL'];dob_col=row_headers.get('DATE OF BIRTH');paid_col=next((c for h,c in row_headers.items() if 'PAID MEMBER' in h),None);break
   if not (header_row and name_col and school_col):
    continue
   # Trust only complete, valid age-group labels in worksheet names.
@@ -412,13 +423,34 @@ def parse_demographics_xlsx(path):
    warnings.append(f'Could not determine age group for player worksheet: {sheet_name}')
    continue
   rows=[]
-  for row in pws.iter_rows(min_row=header_row+1,max_col=max(name_col,school_col),values_only=True):
+  for row in pws.iter_rows(min_row=header_row+1,max_col=max(name_col,school_col,paid_col or 0),values_only=True):
    player=' '.join(str(row[name_col-1] or '').strip().split())
    school=' '.join(str(row[school_col-1] or '').strip().split())
    if not player: continue
    if clean_name(player).startswith('UNDER '): continue
-   rows.append({'name':player,'school':school})
+   paid=clean_name(row[paid_col-1]) if paid_col else ''
+   rows.append({'name':player,'school':school,'paid':paid if paid in ('YES','NO') else 'NOT RECORDED'})
   if rows: players_by_age.setdefault(group,[]).extend(rows)
+
+ # Adult payment status: only numbered names below the membership-list header.
+ adult_payment={}
+ for category,prefix in [('Non-playing adults','Senior Adult Non Playing Member'),('Senior ladies','Senior Adult Ladies Members'),('Senior men','Senior Adult Mens Members')]:
+  aws=find_sheet(prefix);records=[];in_list=False;pay_col=3
+  for row in aws.iter_rows(values_only=True):
+   vals=list(row);name=clean_name(vals[1]) if len(vals)>1 else ''
+   if name.startswith('SENIOR ADULT') and 'MEMBERS' in name:
+    in_list=True
+    for idx,v in enumerate(vals):
+     if 'PAID MEMBER' in clean_name(v):pay_col=idx+1
+    continue
+   if not in_list:continue
+   number=vals[0] if vals else None
+   try:valid=float(number).is_integer() and float(number)>0
+   except (TypeError,ValueError):valid=False
+   if not valid or not name:continue
+   paid=clean_name(vals[pay_col-1]) if len(vals)>=pay_col else ''
+   records.append({'name':' '.join(str(vals[1]).split()),'paid':paid if paid in ('YES','NO') else 'NOT RECORDED'})
+  adult_payment[category]=records
 
  # Actual player-list tabs are authoritative for membership by age group.
  # This prevents stale summary cells from leaving the dashboard one player behind.
@@ -509,7 +541,7 @@ def parse_demographics_xlsx(path):
  if sum(areas.values())!=total_players:warnings.append(f'Parish catchment sums to {sum(areas.values())}, latest player total is {total_players}')
  if sum(schools.values())!=total_players:warnings.append(f'School catchment sums to {sum(schools.values())}, latest player total is {total_players}')
  coaching,events=parse_integrated_tabs(wb)
- return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'players_by_age':players_by_age,'juvenile_gender':juvenile_gender,'senior_adult_non_playing_count':senior_adult_non_playing_count,'senior_adult_non_playing_members':senior_adult_non_playing,'senior_adult_ladies_count':senior_adult_ladies_count,'senior_adult_ladies_members':senior_adult_ladies,'senior_adult_mens_count':senior_adult_mens_count,'senior_adult_mens_members':senior_adult_mens,'upcoming_events':events,'coaching':coaching,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
+ return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'players_by_age':players_by_age,'adult_payment':adult_payment,'juvenile_gender':juvenile_gender,'senior_adult_non_playing_count':senior_adult_non_playing_count,'senior_adult_non_playing_members':senior_adult_non_playing,'senior_adult_ladies_count':senior_adult_ladies_count,'senior_adult_ladies_members':senior_adult_ladies,'senior_adult_mens_count':senior_adult_mens_count,'senior_adult_mens_members':senior_adult_mens,'upcoming_events':events,'coaching':coaching,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
 
 
 def load_sync_status():
@@ -1185,7 +1217,9 @@ class H(BaseHTTPRequestHandler):
      return '<p class="muted">No verified figures available.</p>'
     mx=max(1,max([int(v) for v in data.values()] or [0]))
     return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
-   players=DEMO.get('players_by_age',{}).get(g,[]);prows=''.join(f'<tr><td>{e(x.get("name",""))}</td><td>{e(x.get("school",""))}</td></tr>' for x in players);plist=(f'<div class="card"><h3>{e(g)} Players</h3><p class="muted">{len(players)} player names imported. Only player name and school are stored/displayed.</p><div class="tw"><table><tr><th>Player Name</th><th>School</th></tr>{prows}</table></div></div>' if players else '<div class="card"><h3>Players</h3><p class="muted">No player-name list has been imported for this age group yet.</p></div>');total=int(DEMO['age_totals'][g]);catchment_warning='<p class="muted">Workbook catchment total differs from player count.</p>' if sum(DEMO.get('age_areas',{}).get(g,{}).values()) != total else '';b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div>{plist}<div class="grid"><div class="card"><h3>Residential catchment</h3>{catchment_warning}{bars2(DEMO.get('age_areas',{}).get(g,{})) if DEMO.get('age_areas',{}).get(g,{}) else '<p class="muted">No catchment breakdown in workbook.</p>'}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO.get('age_schools',{}).get(g,{}))}</div></div><div class="card"><p class="muted">School figures are calculated from the imported player list; missing schools are shown as Not recorded. Residential catchment figures are taken from the workbook summary; their totals may differ from the current player list.</p></div>''';return self.out(page(g+' Demographics',b,u))
+   players=DEMO.get('players_by_age',{}).get(g,[])
+   payment_block=payment_section(players, '2026 membership payments')
+   prows=''.join(f'<tr><td>{e(x.get("name",""))}</td><td>{e(x.get("school",""))}</td></tr>' for x in players);plist=(f'<div class="card"><h3>{e(g)} Players</h3><p class="muted">{len(players)} player names imported. Only player name and school are stored/displayed.</p><div class="tw"><table><tr><th>Player Name</th><th>School</th></tr>{prows}</table></div></div>' if players else '<div class="card"><h3>Players</h3><p class="muted">No player-name list has been imported for this age group yet.</p></div>');total=int(DEMO['age_totals'][g]);catchment_warning='<p class="muted">Workbook catchment total differs from player count.</p>' if sum(DEMO.get('age_areas',{}).get(g,{}).values()) != total else '';b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div>{plist}{payment_block}<div class="grid"><div class="card"><h3>Residential catchment</h3>{catchment_warning}{bars2(DEMO.get('age_areas',{}).get(g,{})) if DEMO.get('age_areas',{}).get(g,{}) else '<p class="muted">No catchment breakdown in workbook.</p>'}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO.get('age_schools',{}).get(g,{}))}</div></div><div class="card"><p class="muted">School figures are calculated from the imported player list; missing schools are shown as Not recorded. Residential catchment figures are taken from the workbook summary; their totals may differ from the current player list.</p></div>''';return self.out(page(g+' Demographics',b,u))
   if path=='/coaching-team':
    c.close();coaches=list(COACHING.get('coaches',{}).values());teams=COACHING.get('teams',{});buckets={'expired':0,'urgent':0,'warning':0,'unknown':0,'unknown_expiry':0,'not_vetted':0,'valid':0}
    for x in coaches:buckets[expiry_bucket(x)[0]]+=1
@@ -1213,7 +1247,8 @@ class H(BaseHTTPRequestHandler):
    b=f'''<div class="hero"><div><div class="eyebrow">Playing programme</div><h2>Games Played</h2><p>Games activity by team / age group.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Total games</b><small>Recorded in source workbook</small></div><div class="card kpi"><div class="stat">{len(games)}</div><b>Teams reporting</b></div></div><div class="card chart-card"><h3>Games by team</h3>{svg_bar_chart(games,260)}</div>''';return self.out(page('Games Played',b,u))
   if path=='/membership':
    c.close();ages=dict(sorted(DEMO.get('age_totals',{}).items(),key=lambda x:int(x[0][1:])));years=sorted((int(y) for y in DEMO.get('growth',{}) if str(y).isdigit()));latest=years[-1] if years else datetime.now().year;total=int(DEMO.get('growth',{}).get(str(latest),sum(ages.values())));cards=''.join(f'<a class="chartlink" href="/demographics/age?group={e(k)}"><div class="card kpi"><div class="stat">{int(v)}</div><b>{e(k)}</b><small>View player names & school</small></div></a>' for k,v in ages.items())
-   b=f'''<div class="hero"><div><div class="eyebrow">Club population</div><h2>Membership</h2><p>Age-group membership with player-name drill-downs.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Total members</b><small>{latest}</small></div><div class="card kpi"><div class="stat">{len(ages)}</div><b>Age groups</b></div></div><div class="section-title"><h3>Members by age group</h3><span class="pill">Tap an age group</span></div><div class="grid">{cards}</div>''';return self.out(page('Membership',b,u))
+   adult_sections=''.join('<h3>'+e(category)+'</h3>'+payment_section(records) for category,records in DEMO.get('adult_payment',{}).items())
+   b=f'''<div class="hero"><div><div class="eyebrow">Club population</div><h2>Membership</h2><p>Age-group membership with player-name drill-downs.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Total members</b><small>{latest}</small></div><div class="card kpi"><div class="stat">{len(ages)}</div><b>Age groups</b></div></div><div class="section-title"><h3>Members by age group</h3><span class="pill">Tap an age group</span></div><div class="grid">{cards}</div>{adult_sections}''';return self.out(page('Membership',b,u))
   if path=='/reports':
    w,a=self.vis(u)
    ss=c.execute('select * from sessions '+w+' order by date,start',a).fetchall()
