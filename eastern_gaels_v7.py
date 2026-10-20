@@ -634,23 +634,21 @@ def session_sync_key(x):
 
 def activate_schools_from_xlsx(path):
  global GPO_COSTS
- sessions=parse_schools_xlsx(path)  # validate before touching the live schedule
+ sessions=parse_schools_xlsx(path)
  gpo=parse_gpo_costs_xlsx(path)
- c=dbc()
+ c=dbc();added=0
  try:
-  # Preserve operational updates made in the dashboard. Google owns timetable
-  # fields; the dashboard owns actual_status, attendance, notes and updated_at.
-  locked={}
-  for old in c.execute('select * from sessions').fetchall():
-   if old['updated_at'] or old['attendance'] is not None or (old['notes'] or '').strip() or old['actual_status']!=old['planned_status']:
-    locked[session_sync_key(old)]=(old['actual_status'],old['attendance'],old['notes'],old['updated_at'])
+  existing=c.execute('select * from sessions').fetchall()
+  keys={session_sync_key(x) for x in existing}
+  ids={x['id'] for x in existing}
   c.execute('begin')
-  c.execute('delete from sessions')
   for s in sessions:
-   keep=locked.get(session_sync_key(s))
-   actual,attendance,notes,updated=(keep if keep else (s['status'],None,None,None))
-   c.execute('insert into sessions(id,date,day,school,coach,title,start,end,class_group,age_group,planned_status,actual_status,attendance,notes,updated_at) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-    (s['id'],s['date'],s['day'],s['school'],s['coach'],s['session'],s['start'],s['end'],s['group'],s['age'],s['status'],actual,attendance,notes,updated))
+   key=session_sync_key(s)
+   # Dashboard edits take priority. Never delete or overwrite existing rows.
+   # Workbook IDs are positional, so collisions must not overwrite edits.
+   if key in keys or s['id'] in ids:continue
+   c.execute('insert into sessions(id,date,day,school,coach,title,start,end,class_group,age_group,planned_status) values(?,?,?,?,?,?,?,?,?,?,?)',(s['id'],s['date'],s['day'],s['school'],s['coach'],s['session'],s['start'],s['end'],s['group'],s['age'],s['status']))
+   keys.add(key);ids.add(s['id']);added+=1
   c.commit()
  except:
   c.rollback();raise
@@ -659,7 +657,7 @@ def activate_schools_from_xlsx(path):
  tmp=GPO_COST_FILE+'.tmp'
  with open(tmp,'w',encoding='utf8') as f:json.dump(gpo,f,indent=2,ensure_ascii=False)
  os.replace(tmp,GPO_COST_FILE);GPO_COSTS=load_gpo_costs()
- return {'sessions':len(sessions),'gpo_costs':{k:v.get('total',0) for k,v in GPO_COSTS.get('years',{}).items()}}
+ return {'sessions_in_google':len(sessions),'new_sessions_added':added,'existing_sessions_preserved':len(existing),'gpo_costs':{k:v.get('total',0) for k,v in GPO_COSTS.get('years',{}).items()}}
 
 def sync_google_sources():
  if not GOOGLE_SYNC_ENABLED:return {'enabled':False}
