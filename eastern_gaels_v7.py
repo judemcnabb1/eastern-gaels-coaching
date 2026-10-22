@@ -530,6 +530,38 @@ def google_credentials():
  return service_account.Credentials.from_service_account_info(
   info,scopes=['https://www.googleapis.com/auth/drive.readonly'])
 
+# Certificate storage: explicit Drive folders, never silently fall back to local files.
+GOOGLE_GARDA_FOLDER_ID=os.environ.get('GOOGLE_GARDA_FOLDER_ID','1MuoKe0MbW_cwd71GhjaO_yut1n7hHydu')
+GOOGLE_SAFEGUARDING_FOLDER_ID=os.environ.get('GOOGLE_SAFEGUARDING_FOLDER_ID','1YnrmrBfKC5u_UGc775sJF0i44FfC-ESO')
+def certificate_drive_session():
+ from google.oauth2 import service_account
+ from google.auth.transport.requests import AuthorizedSession
+ raw=os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON','').strip()
+ if not raw:raise RuntimeError('Google Drive service account is not configured')
+ info=json.loads(raw)
+ creds=service_account.Credentials.from_service_account_info(info,scopes=['https://www.googleapis.com/auth/drive.file'])
+ return AuthorizedSession(creds)
+def certificate_drive_upload(typ,data,ext):
+ from urllib.parse import quote as urlquote
+ folder=GOOGLE_GARDA_FOLDER_ID if typ=='garda' else GOOGLE_SAFEGUARDING_FOLDER_ID
+ mime={'pdf':'application/pdf','png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg'}[ext.lstrip('.')]
+ name='certificate-'+secrets.token_hex(16)+ext
+ # Multipart upload: metadata with folder parent and binary media.
+ boundary='eg'+secrets.token_hex(16)
+ body=(('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n').encode()+json.dumps({'name':name,'parents':[folder]}).encode()+b'\r\n'+('--'+boundary+'\r\nContent-Type: '+mime+'\r\n\r\n').encode()+data+b'\r\n'+('--'+boundary+'--\r\n').encode())
+ session=certificate_drive_session()
+ r=session.post('https://www.googleapis.com/upload/drive/v3/files',params={'uploadType':'multipart','fields':'id,name,parents'},headers={'Content-Type':'multipart/related; boundary='+boundary},data=body,timeout=60)
+ if r.status_code not in (200,201):raise RuntimeError('Drive certificate upload failed (HTTP '+str(r.status_code)+')')
+ result=r.json()
+ if not result.get('id') or folder not in result.get('parents',[]):raise RuntimeError('Drive upload not confirmed in the expected folder')
+ return result['id']
+def certificate_drive_download(file_id):
+ if not re.fullmatch(r'[A-Za-z0-9_-]{10,}',file_id):raise ValueError('Invalid Drive file ID')
+ r=certificate_drive_session().get('https://www.googleapis.com/drive/v3/files/'+file_id,params={'alt':'media'},timeout=60)
+ if r.status_code!=200:raise RuntimeError('Drive certificate download failed (HTTP '+str(r.status_code)+')')
+ if len(r.content)>6*1024*1024:raise ValueError('Certificate too large')
+ return r.content
+
 def google_export_xlsx(file_id,destination):
  from google.auth.transport.requests import AuthorizedSession
  creds=google_credentials();session=AuthorizedSession(creds)
@@ -1159,7 +1191,7 @@ class H(BaseHTTPRequestHandler):
     status,days=compliance_state(expiry)
     summary[typ][status]+=1
     msg=('Expired '+str(-days)+' days ago' if days is not None and days<0 else str(days)+' days remaining' if days is not None else 'Date missing')
-    file_link=(f'<a href="/compliance/file?coach={quote(key)}&type={typ}">Download</a>' if item.get('file') else 'No file')
+    file_link=(f'<a href="/compliance/file?coach={quote(key)}&type={typ}">Download</a>' if item.get('file') or item.get('drive_file_id') else 'No file')
     edit=f"""<form method="post" action="/compliance/save" enctype="multipart/form-data"><input type="hidden" name="coach" value="{e(key)}"><input type="hidden" name="type" value="{typ}"><label>Expiry<input type="date" name="expiry" value="{e(expiry)}"></label><label>Upload PDF/JPG/PNG<input type="file" name="certificate" accept=".pdf,.jpg,.jpeg,.png"></label><button>Save {typ.title()}</button></form>""" if u['role']=='admin' else ''
     return f'<td>{e(expiry or "Not recorded")}<div><span class="badge {status}">{e(msg)}</span></div><div>{file_link}</div>{edit}</td>'
    for key,x in coaches:
@@ -1177,13 +1209,22 @@ class H(BaseHTTPRequestHandler):
    if u['role']!='admin':return self.send_error(403)
    key=q.get('coach',[''])[0];typ=q.get('type',[''])[0]
    if typ not in ('garda','safeguarding'):return self.send_error(400)
-   filename=compliance_records().get(key,{}).get(typ,{}).get('file','')
-   if not re.fullmatch(r'[a-f0-9]{32}\\.(pdf|jpg|jpeg|png)',filename):return self.send_error(404)
-   try:
-    with open(os.path.join(SAFE_DOCS,filename),'rb') as f:data=f.read()
-   except OSError:return self.send_error(404)
-   mime='application/pdf' if filename.endswith('.pdf') else 'image/png' if filename.endswith('.png') else 'image/jpeg'
-   self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Disposition','attachment; filename="'+typ+'-certificate.'+filename.rsplit('.',1)[-1]+'"');self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
+   record=compliance_records().get(key,{}).get(typ,{})
+   filename=record.get('file','')
+   drive_id=record.get('drive_file_id','')
+   if drive_id:
+    try:data=certificate_drive_download(drive_id)
+    except (RuntimeError,ValueError,KeyError,ImportError) as ex:
+     print('Certificate download error:',type(ex).__name__,str(ex));return self.send_error(502,'Certificate unavailable from Google Drive')
+    ext=record.get('extension','.pdf')
+   else:
+    if not re.fullmatch(r'[a-f0-9]{32}\.(pdf|jpg|jpeg|png)',filename):return self.send_error(404)
+    try:
+     with open(os.path.join(SAFE_DOCS,filename),'rb') as f:data=f.read()
+    except OSError:return self.send_error(404)
+    ext=os.path.splitext(filename)[1]
+   mime='application/pdf' if ext=='.pdf' else 'image/png' if ext=='.png' else 'image/jpeg'
+   self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Disposition','attachment; filename="'+typ+'-certificate.'+ext.lstrip('.')+'"');self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
   if path=='/courses':
    c.close();coaches=list(COACHING.get('coaches',{}).values());quals={}
    for x in coaches:qv=str(x.get('qualification','Unknown') or 'Unknown').strip();quals[qv]=quals.get(qv,0)+1
@@ -1296,11 +1337,13 @@ class H(BaseHTTPRequestHandler):
     valid=ext in ('.pdf','.png','.jpg','.jpeg') and 0<len(data)<=5*1024*1024
     valid=valid and (data.startswith(b'%PDF-') if ext=='.pdf' else data.startswith(b'\x89PNG\r\n\x1a\n') if ext=='.png' else data.startswith(b'\xff\xd8\xff'))
     if not valid:return self.send_error(400,'Invalid certificate format or size')
-    os.makedirs(SAFE_DOCS,mode=0o700,exist_ok=True)
-    filename=secrets.token_hex(16)+ext
-    with open(os.path.join(SAFE_DOCS,filename),'wb') as f:f.write(data)
-    os.chmod(os.path.join(SAFE_DOCS,filename),0o600)
-    record['file']=filename
+    try:drive_id=certificate_drive_upload(typ,data,ext)
+    except Exception as ex:
+     print('Certificate upload error:',type(ex).__name__,str(ex))
+     return self.send_error(502,'Google Drive upload failed; certificate record was not changed')
+    record['drive_file_id']=drive_id
+    record['extension']=ext
+    record.pop('file',None)
    if expiry:record['expiry']=expiry
    compliance_save(records)
    return self.red('/compliance')
