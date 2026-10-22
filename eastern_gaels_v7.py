@@ -1061,12 +1061,29 @@ class H(BaseHTTPRequestHandler):
    growth=DEMO.get('growth',{});growth_chart=svg_bar_chart({str(y):int(growth.get(str(y),0)) for y in years[-6:]},230)
    ages=dict(sorted(DEMO.get('age_totals',{}).items(),key=lambda x:int(x[0][1:])));age_chart=svg_bar_chart(ages,230)
    catchment_chart=pie_chart(DEMO.get('catchment',{}))
-   compliance_rate=round((vetted+safe)*100/(2*len(coaches))) if coaches else 0
-   expired_count=sum(expiry_bucket(x)[0]=='expired' for x in coaches)
-   compliant_count=sum(str(x.get('garda_vetted','')).upper()=='YES' and str(x.get('safeguarding','')).upper()=='YES' and expiry_bucket(x)[0]!='expired' for x in coaches)
-   pending_count=max(0,len(coaches)-compliant_count-expired_count)
-   compliance_rate=round(compliant_count*100/len(coaches)) if coaches else 0
-   compliance_chart=compliance_status_chart({'Compliant':compliant_count,'Pending':pending_count,'Expired':expired_count,'Not Required':0},compliance_rate)
+   # Two independent charts in the existing single Compliance Status tile.
+   records=compliance_records()
+   compliance_counts={typ:{'Compliant':0,'Pending':0,'Expired':0} for typ in ('garda','safeguarding')}
+   for coach_key,coach in COACHING.get('coaches',{}).items():
+    for typ in ('garda','safeguarding'):
+     record=records.get(coach_key,{}).get(typ,{})
+     expiry=record.get('expiry','')
+     if not expiry and typ=='garda':
+      expiry=coach.get('garda_expiry','') or ''
+      if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',str(expiry)):expiry=''
+     state,_=compliance_state(expiry)
+     category='Expired' if state=='expired' else 'Pending' if state=='unknown' else 'Compliant'
+     compliance_counts[typ][category]+=1
+   def compliance_subchart(typ,title):
+    counts=compliance_counts[typ]
+    rate=round(100*counts['Compliant']/len(coaches)) if coaches else 0
+    chart=compliance_status_chart(counts,rate)
+    # Each independent legend carries its own Garda/Safeguarding labels.
+    for label in ('Compliant','Pending','Expired'):
+     chart=chart.replace('</i>'+label+' <b>','</i>'+title+' '+label+' <b>')
+    return '<section><h4 style="margin:0 0 12px">'+e(title)+'</h4>'+chart+'</section>'
+   compliance_chart='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:24px">'+compliance_subchart('garda','Garda')+compliance_subchart('safeguarding','Safeguarding')+'</div>'
+   compliance_rate=round(100*sum(compliance_counts[t]['Compliant'] for t in ('garda','safeguarding'))/(2*len(coaches))) if coaches else 0
    quals=COACHING.get('qualification_summary',{}) or {}
    if not quals:
     for x in coaches:
