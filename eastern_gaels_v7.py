@@ -530,6 +530,29 @@ def google_credentials():
  return service_account.Credentials.from_service_account_info(
   info,scopes=['https://www.googleapis.com/auth/drive.readonly'])
 
+# Restore the original user-authorised Google Drive connection for certificates.
+GOOGLE_OAUTH_CLIENT_ID=os.environ.get('GOOGLE_OAUTH_CLIENT_ID','').strip()
+GOOGLE_OAUTH_CLIENT_SECRET=os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET','').strip()
+GOOGLE_OAUTH_REDIRECT_URI=os.environ.get('GOOGLE_OAUTH_REDIRECT_URI','https://eastern-gaels-coaching.onrender.com/google/callback').strip()
+GOOGLE_OAUTH_TOKEN_FILE=os.path.join(DATA_DIR,'google_drive_oauth.json')
+GOOGLE_OAUTH_STATES={}
+def load_google_oauth_token():
+ try:
+  with open(GOOGLE_OAUTH_TOKEN_FILE,encoding='utf8') as f:return json.load(f)
+ except (OSError,json.JSONDecodeError):return {}
+def save_google_oauth_token(token):
+ tmp=GOOGLE_OAUTH_TOKEN_FILE+'.tmp'
+ with open(tmp,'w',encoding='utf8') as f:json.dump(token,f)
+ os.replace(tmp,GOOGLE_OAUTH_TOKEN_FILE)
+def google_oauth_access_token():
+ import requests
+ refresh=load_google_oauth_token().get('refresh_token','')
+ if not refresh:raise RuntimeError('Google Drive not connected; use Connect Google Drive on Compliance')
+ r=requests.post('https://oauth2.googleapis.com/token',data={'client_id':GOOGLE_OAUTH_CLIENT_ID,'client_secret':GOOGLE_OAUTH_CLIENT_SECRET,'refresh_token':refresh,'grant_type':'refresh_token'},timeout=30)
+ if r.status_code!=200:raise RuntimeError('Google OAuth token refresh failed (HTTP '+str(r.status_code)+')')
+ access=r.json().get('access_token','')
+ if not access:raise RuntimeError('Google OAuth did not return an access token')
+ return access
 # Certificate storage: explicit Drive folders, never silently fall back to local files.
 GOOGLE_GARDA_FOLDER_ID=os.environ.get('GOOGLE_GARDA_FOLDER_ID','1MuoKe0MbW_cwd71GhjaO_yut1n7hHydu')
 GOOGLE_SAFEGUARDING_FOLDER_ID=os.environ.get('GOOGLE_SAFEGUARDING_FOLDER_ID','1YnrmrBfKC5u_UGc775sJF0i44FfC-ESO')
@@ -543,14 +566,15 @@ def certificate_drive_session():
  return AuthorizedSession(creds)
 def certificate_drive_upload(typ,data,ext):
  from urllib.parse import quote as urlquote
- folder=GOOGLE_GARDA_FOLDER_ID if typ=='garda' else GOOGLE_SAFEGUARDING_FOLDER_ID
+ folder=GOOGLE_GARDA_FOLDER_ID  # Both certificate types use the existing Garda folder
  mime={'pdf':'application/pdf','png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg'}[ext.lstrip('.')]
  name='certificate-'+secrets.token_hex(16)+ext
  # Multipart upload: metadata with folder parent and binary media.
  boundary='eg'+secrets.token_hex(16)
  body=(('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n').encode()+json.dumps({'name':name,'parents':[folder]}).encode()+b'\r\n'+('--'+boundary+'\r\nContent-Type: '+mime+'\r\n\r\n').encode()+data+b'\r\n'+('--'+boundary+'--\r\n').encode())
- session=certificate_drive_session()
- r=session.post('https://www.googleapis.com/upload/drive/v3/files',params={'uploadType':'multipart','fields':'id,name,parents'},headers={'Content-Type':'multipart/related; boundary='+boundary},data=body,timeout=60)
+ import requests
+ access=google_oauth_access_token()
+ r=requests.post('https://www.googleapis.com/upload/drive/v3/files',params={'uploadType':'multipart','fields':'id,name,parents'},headers={'Authorization':'Bearer '+access,'Content-Type':'multipart/related; boundary='+boundary},data=body,timeout=60)
  if r.status_code not in (200,201):
   # Log Google's machine-readable reason, not file content or credentials.
   try:
@@ -564,7 +588,8 @@ def certificate_drive_upload(typ,data,ext):
  return result['id']
 def certificate_drive_download(file_id):
  if not re.fullmatch(r'[A-Za-z0-9_-]{10,}',file_id):raise ValueError('Invalid Drive file ID')
- r=certificate_drive_session().get('https://www.googleapis.com/drive/v3/files/'+file_id,params={'alt':'media'},timeout=60)
+ import requests
+ r=requests.get('https://www.googleapis.com/drive/v3/files/'+file_id,params={'alt':'media'},headers={'Authorization':'Bearer '+google_oauth_access_token()},timeout=60)
  if r.status_code!=200:raise RuntimeError('Drive certificate download failed (HTTP '+str(r.status_code)+')')
  if len(r.content)>6*1024*1024:raise ValueError('Certificate too large')
  return r.content
@@ -1096,6 +1121,30 @@ class H(BaseHTTPRequestHandler):
    z=SimpleCookie(self.headers.get('Cookie'));sid=z.get('egsid');SESS.pop(sid.value,None) if sid else None;c.close();self.send_response(303);self.send_header('Location','/login');self.send_header('Set-Cookie','egsid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax');self.end_headers();return
   u=self.need()
   if not u:c.close();return
+  if path=='/google-oauth/start':
+   if u['role']!='admin':c.close();return self.send_error(403)
+   if not GOOGLE_OAUTH_CLIENT_ID or not GOOGLE_OAUTH_CLIENT_SECRET:
+    c.close();return self.out(page('Google Drive','<div class="card">Google OAuth credentials are not configured.</div>',u),500)
+   state=secrets.token_urlsafe(32);GOOGLE_OAUTH_STATES[state]={'uid':u['id'],'expires':time.time()+600}
+   from urllib.parse import urlencode
+   params={'client_id':GOOGLE_OAUTH_CLIENT_ID,'redirect_uri':GOOGLE_OAUTH_REDIRECT_URI,'response_type':'code','scope':'https://www.googleapis.com/auth/drive','access_type':'offline','prompt':'consent','state':state}
+   c.close();return self.red('https://accounts.google.com/o/oauth2/v2/auth?'+urlencode(params))
+  if path in ('/google/callback','/oauth2callback'):
+   if u['role']!='admin':c.close();return self.send_error(403)
+   state=q.get('state',[''])[0];code=q.get('code',[''])[0];err=q.get('error',[''])[0];st=GOOGLE_OAUTH_STATES.pop(state,None)
+   if err or not st or st.get('uid')!=u['id'] or st.get('expires',0)<time.time() or not code:
+    c.close();return self.out(page('Google Drive','<div class="card">Google authorisation was cancelled or expired. Please try again.</div>',u),400)
+   import requests
+   try:
+    rr=requests.post('https://oauth2.googleapis.com/token',data={'client_id':GOOGLE_OAUTH_CLIENT_ID,'client_secret':GOOGLE_OAUTH_CLIENT_SECRET,'code':code,'grant_type':'authorization_code','redirect_uri':GOOGLE_OAUTH_REDIRECT_URI},timeout=30)
+    if rr.status_code!=200:raise RuntimeError('Google token exchange failed (HTTP '+str(rr.status_code)+')')
+    tok=rr.json();refresh=tok.get('refresh_token') or load_google_oauth_token().get('refresh_token')
+    if not refresh:raise RuntimeError('No Google refresh token was returned')
+    save_google_oauth_token({'refresh_token':refresh,'connected_at':datetime.now().isoformat(timespec='seconds')})
+   except Exception as ex:
+    print('Google Drive connection error:',type(ex).__name__,str(ex))
+    c.close();return self.out(page('Google Drive','<div class="card">Google Drive connection failed. Please try again.</div>',u),502)
+   c.close();return self.red('/compliance')
   if path.startswith('/members/'):
    group=path.rstrip('/').split('/')[-1]
    body=adult_members_drilldown(group)
@@ -1209,6 +1258,7 @@ class H(BaseHTTPRequestHandler):
    b=f"""<div class="hero"><div><div class="eyebrow">Governance</div><h2>Compliance</h2><p>Garda vetting and safeguarding documents, expiry dates and dashboard-only 90-day alerts.</p></div></div>
    <div class="grid"><div class="card kpi"><div class="stat">{len(coaches)}</div><b>Coaches</b></div><div class="card kpi"><div class="stat">{g['expired']+g['urgent']+g['warning']}</div><b>Garda vetting alerts</b><small>Expired or within 90 days</small></div><div class="card kpi"><div class="stat">{sg['expired']+sg['urgent']+sg['warning']}</div><b>Safeguarding alerts</b><small>Expired or within 90 days</small></div><div class="card kpi"><div class="stat">{g['unknown']+sg['unknown']}</div><b>Missing expiry dates</b><small>Across both records</small></div></div>
    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:16px;align-items:start"><div class="card"><h3>90-day expiry alerts</h3><p><b>Garda vetting:</b> {g['expired']} expired · {g['urgent']} due within 30 days · {g['warning']} due in 31–90 days · {g['unknown']} dates missing</p><p><b>Safeguarding:</b> {sg['expired']} expired · {sg['urgent']} due within 30 days · {sg['warning']} due in 31–90 days · {sg['unknown']} dates missing</p><small>Expiry dates must be entered from actual records. No email notifications.</small></div><div class="card"><h3>Compliance Summary</h3>{page_charts}</div></div>
+   <div class="card"><h3>Google Drive certificates</h3>{('<span class="badge valid">Google Drive connected</span> <a href="/google-oauth/start">Reconnect</a>' if load_google_oauth_token().get('refresh_token') else '<a class="btn" href="/google-oauth/start">Connect Google Drive</a>') if u['role']=='admin' else ''}<p class="muted">Both certificate types are stored in the existing Garda Vetting Google Drive folder.</p></div>
    <div class="card"><h3>Coach documents and expiry dates</h3><div class="tw"><table><tr><th>Coach</th><th>Garda vetting certificate and expiry</th><th>Safeguarding certificate and expiry</th></tr>{rows}</table></div></div>"""
    return self.out(page('Compliance',b,u))
   if path=='/compliance/file':
