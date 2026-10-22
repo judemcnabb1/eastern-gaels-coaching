@@ -31,6 +31,7 @@ def load_demo():
  d.setdefault('games', {})
  d.setdefault('growth', {})
  d.setdefault('players_by_age', {})
+ d.setdefault('adult_payment', {})
  d.setdefault('senior_adult_non_playing_count', 0)
  d.setdefault('senior_adult_non_playing_members', [])
  d.setdefault('senior_adult_ladies_count', 0)
@@ -300,6 +301,17 @@ def parse_integrated_tabs(wb):
  events.sort(key=lambda x:(x.get('sort_date','9999'),x.get('time','99:99')))
  return {'coaches':coaches,'teams':teams,'qualification_summary':qual_summary,'imported_at':datetime.now().isoformat(timespec='seconds')},events
 
+def payment_section(members,title='2026 membership payments'):
+ from collections import Counter
+ counts=Counter(x.get('paid','NOT RECORDED') for x in members)
+ yes=counts['YES'];no=counts['NO'];unknown=len(members)-yes-no
+ # Unknown statuses are not counted as unpaid.
+ pie=pie_chart({'Paid':yes,'Not paid':no,'Not recorded':unknown}) if members else '<p class="muted">No member records.</p>'
+ unpaid=''.join('<tr><td>'+e(x.get('name',''))+'</td><td>Not paid</td></tr>' for x in members if x.get('paid')=='NO')
+ rows=('<div class="tw"><table><tr><th>Member name</th><th>Status</th></tr>'+unpaid+'</table></div>') if no else '<p class="muted">No unpaid members recorded.</p>'
+ note=('<p class="muted">'+str(unknown)+' membership status(es) not recorded; excluded from the unpaid list.</p>') if unknown else ''
+ return '<div class="grid2"><div class="card chart-card"><h3>'+e(title)+'</h3>'+pie+'<p class="muted">Paid '+str(yes)+' · Not paid '+str(no)+' · Not recorded '+str(unknown)+'</p>'+note+'</div><div class="card"><h3>Members not paid ('+str(no)+')</h3>'+rows+'</div></div>'
+
 def parse_demographics_xlsx(path):
  wb=load_workbook(path,data_only=True,read_only=True)
  names=wb.sheetnames
@@ -342,14 +354,14 @@ def parse_demographics_xlsx(path):
  players_by_age={}
  for sheet_name in names:
   pws=wb[sheet_name]
-  header_row=None;name_col=None;school_col=None;dob_col=None
+  header_row=None;name_col=None;school_col=None;dob_col=None;paid_col=None
   for r in range(1,min(11,(pws.max_row or 10)+1)):
    row_headers={}
    for c in range(1,min(21,(pws.max_column or 20)+1)):
     h=clean_name(pws.cell(r,c).value)
     row_headers[h]=c
    if 'PLAYER NAME' in row_headers and 'SCHOOL' in row_headers:
-    header_row=r;name_col=row_headers['PLAYER NAME'];school_col=row_headers['SCHOOL'];dob_col=row_headers.get('DATE OF BIRTH');break
+    header_row=r;name_col=row_headers['PLAYER NAME'];school_col=row_headers['SCHOOL'];dob_col=row_headers.get('DATE OF BIRTH');paid_col=next((c for h,c in row_headers.items() if 'PAID MEMBER' in h),None);break
   if not (header_row and name_col and school_col):
    continue
   # First prefer an explicit Uxx / UNDER xx marker in the title or top rows.
@@ -389,13 +401,37 @@ def parse_demographics_xlsx(path):
    warnings.append(f'Could not determine age group for player worksheet: {sheet_name}')
    continue
   rows=[]
-  for row in pws.iter_rows(min_row=header_row+1,max_col=max(name_col,school_col),values_only=True):
+  for row in pws.iter_rows(min_row=header_row+1,max_col=max(name_col,school_col,paid_col or 0),values_only=True):
    player=' '.join(str(row[name_col-1] or '').strip().split())
    school=' '.join(str(row[school_col-1] or '').strip().split())
    if not player: continue
    if clean_name(player).startswith('UNDER '): continue
-   rows.append({'name':player,'school':school})
+   paid=clean_name(row[paid_col-1]) if paid_col else ''
+   rows.append({'name':player,'school':school,'paid':paid if paid in ('YES','NO') else 'NOT RECORDED'})
   if rows: players_by_age[group]=rows
+
+ # Adult payment status: only numbered names below the membership-list header.
+ adult_payment={}
+ for category,prefix in [('Non-playing adults','Senior Adult Non Playing Member'),('Senior ladies','Senior Adult Ladies Members'),('Senior men','Senior Adult Mens Members')]:
+  aws=next((wb[n] for n in names if clean_name(n).startswith(clean_name(prefix))),None);records=[];in_list=False;pay_col=3
+  if aws is None:
+   adult_payment[category]=[]
+   continue
+  for row in aws.iter_rows(values_only=True):
+   vals=list(row);name=clean_name(vals[1]) if len(vals)>1 else ''
+   if name.startswith('SENIOR ADULT') and 'MEMBERS' in name:
+    in_list=True
+    for idx,v in enumerate(vals):
+     if 'PAID MEMBER' in clean_name(v):pay_col=idx+1
+    continue
+   if not in_list:continue
+   number=vals[0] if vals else None
+   try:valid=float(number).is_integer() and float(number)>0
+   except (TypeError,ValueError):valid=False
+   if not valid or not name:continue
+   paid=clean_name(vals[pay_col-1]) if len(vals)>=pay_col else ''
+   records.append({'name':' '.join(str(vals[1]).split()),'paid':paid if paid in ('YES','NO') else 'NOT RECORDED'})
+  adult_payment[category]=records
 
  # Actual player-list tabs are authoritative for membership by age group.
  # This prevents stale summary cells from leaving the dashboard one player behind.
@@ -472,7 +508,7 @@ def parse_demographics_xlsx(path):
  if sum(areas.values())!=total_players:warnings.append(f'Parish catchment sums to {sum(areas.values())}, latest player total is {total_players}')
  if sum(schools.values())!=total_players:warnings.append(f'School catchment sums to {sum(schools.values())}, latest player total is {total_players}')
  coaching,events=parse_integrated_tabs(wb)
- return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'players_by_age':players_by_age,'senior_adult_non_playing_count':senior_adult_non_playing_count,'senior_adult_non_playing_members':senior_adult_non_playing,'senior_adult_ladies_count':senior_adult_ladies_count,'senior_adult_ladies_members':senior_adult_ladies,'senior_adult_mens_count':senior_adult_mens_count,'senior_adult_mens_members':senior_adult_mens,'upcoming_events':events,'coaching':coaching,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
+ return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'players_by_age':players_by_age,'adult_payment':adult_payment,'senior_adult_non_playing_count':senior_adult_non_playing_count,'senior_adult_non_playing_members':senior_adult_non_playing,'senior_adult_ladies_count':senior_adult_ladies_count,'senior_adult_ladies_members':senior_adult_ladies,'senior_adult_mens_count':senior_adult_mens_count,'senior_adult_mens_members':senior_adult_mens,'upcoming_events':events,'coaching':coaching,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
 
 
 def load_sync_status():
@@ -1044,7 +1080,7 @@ class H(BaseHTTPRequestHandler):
    upcoming_html=('<div class="card" style="margin-top:14px"><div class="section-title"><h3>Upcoming Events</h3><span class="pill">'+str(len(DEMO.get('upcoming_events',[])))+' scheduled</span></div><div class="tw"><table><tr><th>Event</th><th>Venue</th><th>Date</th><th>Time</th></tr>'+evrows+'</table></div></div>') if evs else ''
    gpo_live=load_gpo_costs();gpo_years=gpo_live.get('years',{});gpo_current=gpo_years.get('2026/27',{});gpo_total=float(gpo_current.get('total',0) or 0)
    paid_visits=sum(len(v.get('entries',[])) for v in gpo_years.values())
-   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><a href="/members/non-playing" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>Tap to view members</small></a><a href="/members/ladies" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">L</span><div class="stat">{ladies_members}</div><b>Senior Adult Ladies Members</b><small>Tap to view members</small></a><a href="/members/mens" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">M</span><div class="stat">{mens_members}</div><b>Senior Adult Mens Members</b><small>Tap to view members</small></a><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div><a href="/gpo-costs" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">€</span><div class="stat">€{gpo_total:,.0f}</div><b>GPO Coaching Cost</b><small>2026/27 to date · Tap to view</small></a><a href="/gpo-costs" class="card kpi" style="text-decoration:none;color:inherit"><span class="metric-icon">P</span><div class="stat">{paid_visits}</div><b>Paid Coaching Visits</b><small>Recorded GPO visits · Tap to view</small></a><a href="/gpo-costs" class="card kpi" style="text-decoration:none;color:inherit"><span class="metric-icon">G</span><div class="stat">€{gpo_total:,.0f}</div><b>GPO Coaching</b><small>2026/27 costs · Tap to view</small></a></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
+   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><a href="/members/non-playing" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>Tap to view members</small></a><a href="/members/ladies" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">L</span><div class="stat">{ladies_members}</div><b>Senior Adult Ladies Members</b><small>Tap to view members</small></a><a href="/members/mens" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">M</span><div class="stat">{mens_members}</div><b>Senior Adult Mens Members</b><small>Tap to view members</small></a><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div><a href="/gpo-costs" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">€</span><div class="stat">€{gpo_total:,.0f}</div><b>GPO Coaching Cost</b><small>2026/27 to date · Tap to view</small></a><a href="/paid-membership" class="card kpi" style="text-decoration:none;color:inherit"><span class="metric-icon">%</span><div class="stat">Paid</div><b>Paid Membership</b><small>Payment charts and unpaid member lists</small></a></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
   if path=='/today':
    d=q.get('date',[date.today().isoformat()])[0];w,a=self.vis(u);con='and' if 'where' in w else 'where';r=c.execute('select * from sessions '+w+con+' date=? order by start',a+[d]).fetchall();c.close();b=f'<div class="hero"><div><div class="eyebrow">Schools programme</div><h2>Selected Day</h2></div></div><form class="card"><label>Date</label><div class="row"><input type="date" name="date" value="{e(d)}"><button>Show date</button></div></form>'+(''.join(card(x,True) for x in r) if r else '<div class="card">No coaching scheduled for this date.</div>');return self.out(page('Schools Schedule',b,u))
   if path=='/gpo-costs':
@@ -1104,7 +1140,7 @@ class H(BaseHTTPRequestHandler):
     summary[typ][status]+=1
     msg=('Expired '+str(-days)+' days ago' if days is not None and days<0 else str(days)+' days remaining' if days is not None else 'Date missing')
     file_link=(f'<a href="/compliance/file?coach={quote(key)}&type={typ}">Download</a>' if item.get('file') else 'No file')
-    edit=f"""<form method="post" action="/compliance/save" enctype="multipart/form-data"><input type="hidden" name="coach" value="{e(key)}"><input type="hidden" name="type" value="{typ}"><label>Expiry<input type="date" name="expiry" value="{e(expiry)}" required></label><label>Upload PDF/JPG/PNG<input type="file" name="certificate" accept=".pdf,.jpg,.jpeg,.png"></label><button>Save {typ.title()}</button></form>""" if u['role']=='admin' else ''
+    edit=f"""<form method="post" action="/compliance/save" enctype="multipart/form-data"><input type="hidden" name="coach" value="{e(key)}"><input type="hidden" name="type" value="{typ}"><label>Expiry<input type="date" name="expiry" value="{e(expiry)}"></label><label>Upload PDF/JPG/PNG<input type="file" name="certificate" accept=".pdf,.jpg,.jpeg,.png"></label><button>Save {typ.title()}</button></form>""" if u['role']=='admin' else ''
     return f'<td>{e(expiry or "Not recorded")}<div><span class="badge {status}">{e(msg)}</span></div><div>{file_link}</div>{edit}</td>'
    for key,x in coaches:
     rows+=f'<tr><td><b>{e(x.get("name",""))}</b></td>{status_cell(key,"garda",x)}{status_cell(key,"safeguarding",x)}</tr>'
@@ -1134,6 +1170,23 @@ class H(BaseHTTPRequestHandler):
   if path=='/games':
    c.close();games=DEMO.get('games',{});total=sum(int(v) for v in games.values());mx=max([int(v) for v in games.values()] or [1]);bars=''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in games.items())
    b=f'''<div class="hero"><div><div class="eyebrow">Playing programme</div><h2>Games Played</h2><p>Games activity by team / age group.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Total games</b><small>Recorded in source workbook</small></div><div class="card kpi"><div class="stat">{len(games)}</div><b>Teams reporting</b></div></div><div class="card chart-card"><h3>Games by team</h3>{svg_bar_chart(games,260)}</div>''';return self.out(page('Games Played',b,u))
+  if path=='/paid-membership':
+   c.close()
+   juvenile=DEMO.get('players_by_age',{})
+   adults=DEMO.get('adult_payment',{})
+   groups=[(g,juvenile.get(g,[])) for g in sorted(DEMO.get('age_totals',{}),key=lambda v:int(v[1:]))]
+   groups.extend((name,records) for name,records in adults.items())
+   members=[member for _,records in groups for member in records]
+   paid=sum(member.get('paid')=='YES' for member in members)
+   unpaid=sum(member.get('paid')=='NO' for member in members)
+   unknown=len(members)-paid-unpaid
+   known=paid+unpaid
+   paid_pct=round(100*paid/known,1) if known else 0
+   unpaid_pct=round(100*unpaid/known,1) if known else 0
+   overview=pie_chart({'Paid':paid,'Not paid':unpaid}) if known else '<p class="muted">No recorded YES/NO statuses.</p>'
+   blocks=''.join('<h3>'+e(name)+'</h3>'+payment_section(records,name+' payments') for name,records in groups)
+   b=f'''<div class="actions"><a class="btn secondary" href="/">← Dashboard</a></div><h2>Paid Membership</h2><p class="muted">2026 payment status across juvenile, senior and non-playing membership.</p><div class="grid"><div class="card kpi"><div class="stat">{paid_pct}%</div><b>Paid</b><small>{paid} members</small></div><div class="card kpi"><div class="stat">{unpaid_pct}%</div><b>Not paid</b><small>{unpaid} members</small></div><div class="card kpi"><div class="stat">{unknown}</div><b>Not recorded</b><small>Excluded from paid/unpaid percentages</small></div></div><div class="card chart-card"><h3>Overall paid vs not paid</h3>{overview}<p class="muted">Percentages are based on {known} members with YES/NO recorded, out of {len(members)} imported member records. Members with blank or unexpected statuses are shown separately.</p></div>{blocks}'''
+   return self.out(page('Paid Membership',b,u))
   if path=='/membership':
    c.close();ages=dict(sorted(DEMO.get('age_totals',{}).items(),key=lambda x:int(x[0][1:])));years=sorted((int(y) for y in DEMO.get('growth',{}) if str(y).isdigit()));latest=years[-1] if years else datetime.now().year;total=int(DEMO.get('growth',{}).get(str(latest),sum(ages.values())));cards=''.join(f'<a class="chartlink" href="/demographics/age?group={e(k)}"><div class="card kpi"><div class="stat">{int(v)}</div><b>{e(k)}</b><small>View player names & school</small></div></a>' for k,v in ages.items())
    b=f'''<div class="hero"><div><div class="eyebrow">Club population</div><h2>Membership</h2><p>Age-group membership with player-name drill-downs.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Total members</b><small>{latest}</small></div><div class="card kpi"><div class="stat">{len(ages)}</div><b>Age groups</b></div></div><div class="section-title"><h3>Members by age group</h3><span class="pill">Tap an age group</span></div><div class="grid">{cards}</div>''';return self.out(page('Membership',b,u))
@@ -1203,29 +1256,30 @@ class H(BaseHTTPRequestHandler):
    if n<=0 or n>6*1024*1024:return self.send_error(413)
    from email.parser import BytesParser
    raw=self.rfile.read(n);ct=self.headers.get('Content-Type','')
-   msg=BytesParser().parsebytes(b'Content-Type: '+ct.encode()+b'\\r\\nMIME-Version: 1.0\\r\\n\\r\\n'+raw)
+   msg=BytesParser().parsebytes(b'Content-Type: '+ct.encode()+b'\r\nMIME-Version: 1.0\r\n\r\n'+raw)
    parts={part.get_param('name',header='content-disposition'):part for part in msg.walk() if part.get_content_disposition()=='form-data'}
    def field(name):
     part=parts.get(name)
     return (part.get_payload(decode=True) or b'').decode('utf-8').strip() if part else ''
    key=field('coach');typ=field('type');expiry=field('expiry')
    if key not in COACHING.get('coaches',{}) or typ not in ('garda','safeguarding'):return self.send_error(400)
-   try:date.fromisoformat(expiry)
-   except ValueError:return self.send_error(400)
+   if expiry:
+    try:date.fromisoformat(expiry)
+    except ValueError:return self.send_error(400)
    records=compliance_records();record=records.setdefault(key,{}).setdefault(typ,{})
    uploaded=parts.get('certificate')
    if uploaded and uploaded.get_filename():
     data=uploaded.get_payload(decode=True) or b''
     ext=os.path.splitext(uploaded.get_filename().lower())[1]
     valid=ext in ('.pdf','.png','.jpg','.jpeg') and 0<len(data)<=5*1024*1024
-    valid=valid and (data.startswith(b'%PDF-') if ext=='.pdf' else data.startswith(b'\\x89PNG\\r\\n\\x1a\\n') if ext=='.png' else data.startswith(b'\\xff\\xd8\\xff'))
+    valid=valid and (data.startswith(b'%PDF-') if ext=='.pdf' else data.startswith(b'\x89PNG\r\n\x1a\n') if ext=='.png' else data.startswith(b'\xff\xd8\xff'))
     if not valid:return self.send_error(400,'Invalid certificate format or size')
     os.makedirs(SAFE_DOCS,mode=0o700,exist_ok=True)
     filename=secrets.token_hex(16)+ext
     with open(os.path.join(SAFE_DOCS,filename),'wb') as f:f.write(data)
     os.chmod(os.path.join(SAFE_DOCS,filename),0o600)
     record['file']=filename
-   record['expiry']=expiry
+   if expiry:record['expiry']=expiry
    compliance_save(records)
    return self.red('/compliance')
   if p=='/admin/coaching-team/upload':
