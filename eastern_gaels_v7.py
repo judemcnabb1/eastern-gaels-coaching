@@ -2,7 +2,7 @@
 import os,re,json,sqlite3,secrets,hashlib,hmac,csv,io,html,shutil,threading,time,tempfile,gc
 from openpyxl import load_workbook
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
-from urllib.parse import urlparse,parse_qs,urlencode
+from urllib.parse import urlparse,parse_qs,quote
 from http.cookies import SimpleCookie
 from datetime import date,datetime,timedelta
 import calendar
@@ -31,7 +31,6 @@ def load_demo():
  d.setdefault('games', {})
  d.setdefault('growth', {})
  d.setdefault('players_by_age', {})
- d.setdefault('juvenile_gender', {})
  d.setdefault('senior_adult_non_playing_count', 0)
  d.setdefault('senior_adult_non_playing_members', [])
  d.setdefault('senior_adult_ladies_count', 0)
@@ -50,6 +49,25 @@ def load_coaching():
  with open(p,encoding="utf8") as f:d=json.load(f)
  d.setdefault("coaches",{});d.setdefault("teams",{});return d
 COACHING=load_coaching()
+# Safeguarding evidence is kept separately from imported coaching records, so
+# workbook refreshes cannot erase manually recorded certificate dates.
+SAFE_META=os.path.join(DATA_DIR,'safeguarding_records.json')
+SAFE_DOCS=os.path.join(DATA_DIR,'safeguarding_documents')
+def safeguarding_records():
+ try:
+  with open(SAFE_META,encoding='utf-8') as f:return json.load(f)
+ except (OSError,ValueError):return {}
+def safeguarding_state(record):
+ raw=record.get('expiry','')
+ try:d=date.fromisoformat(raw)
+ except (TypeError,ValueError):return ('unknown',None)
+ days=(d-date.today()).days
+ return ('expired' if days<0 else 'urgent' if days<=30 else 'warning' if days<=90 else 'valid',days)
+def safeguarding_save(records):
+ tmp=SAFE_META+'.tmp'
+ with open(tmp,'w',encoding='utf-8') as f:json.dump(records,f,indent=2)
+ os.replace(tmp,SAFE_META)
+
 
 # Google Drive automatic source feeds.
 # Authentication is supplied through GOOGLE_SERVICE_ACCOUNT_JSON in the environment.
@@ -57,12 +75,6 @@ GOOGLE_DEMOGRAPHICS_SHEET_ID=os.environ.get('GOOGLE_DEMOGRAPHICS_SHEET_ID','1EIG
 GOOGLE_SCHOOLS_SHEET_ID=os.environ.get('GOOGLE_SCHOOLS_SHEET_ID','1F4aC6kgQ3ajaa-fXHYxe_P7M7m_RGPpE0HRirnzkm78')
 GOOGLE_SYNC_MINUTES=max(5,int(os.environ.get('GOOGLE_SYNC_MINUTES','5')))
 GOOGLE_SYNC_ENABLED=os.environ.get('GOOGLE_SYNC_ENABLED','1').strip().lower() not in ('0','false','no','off')
-GARDA_VETTING_FOLDER_ID=os.environ.get('GARDA_VETTING_FOLDER_ID','1MuoKe0MbW_cwd71GhjaO_yut1n7hHydu')
-GOOGLE_OAUTH_CLIENT_ID=os.environ.get('GOOGLE_OAUTH_CLIENT_ID','').strip()
-GOOGLE_OAUTH_CLIENT_SECRET=os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET','').strip()
-GOOGLE_OAUTH_REDIRECT_URI=os.environ.get('GOOGLE_OAUTH_REDIRECT_URI','https://eastern-gaels-coaching.onrender.com/oauth2callback').strip()
-GOOGLE_OAUTH_TOKEN_FILE=os.path.join(DATA_DIR,'google_drive_oauth.json')
-GOOGLE_OAUTH_STATES={}
 SYNC_STATUS_FILE=os.path.join(DATA_DIR,'google_sync_status.json')
 SYNC_LOCK=threading.Lock()
 GPO_COST_FILE=os.path.join(DATA_DIR,'gpo_costs_current.json')
@@ -284,17 +296,6 @@ def parse_integrated_tabs(wb):
  events.sort(key=lambda x:(x.get('sort_date','9999'),x.get('time','99:99')))
  return {'coaches':coaches,'teams':teams,'qualification_summary':qual_summary,'imported_at':datetime.now().isoformat(timespec='seconds')},events
 
-def payment_section(members,title='2026 membership payments'):
- from collections import Counter
- counts=Counter(x.get('paid','NOT RECORDED') for x in members)
- yes=counts['YES'];no=counts['NO'];unknown=len(members)-yes-no
- # Unknown statuses are not counted as unpaid.
- pie=pie_chart({'Paid':yes,'Not paid':no,'Not recorded':unknown}) if members else '<p class="muted">No member records.</p>'
- unpaid=''.join('<tr><td>'+e(x.get('name',''))+'</td><td>Not paid</td></tr>' for x in members if x.get('paid')=='NO')
- rows=('<div class="tw"><table><tr><th>Member name</th><th>Status</th></tr>'+unpaid+'</table></div>') if no else '<p class="muted">No unpaid members recorded.</p>'
- note=('<p class="muted">'+str(unknown)+' membership status(es) not recorded; excluded from the unpaid list.</p>') if unknown else ''
- return '<div class="grid2"><div class="card chart-card"><h3>'+e(title)+'</h3>'+pie+'<p class="muted">Paid '+str(yes)+' · Not paid '+str(no)+' · Not recorded '+str(unknown)+'</p>'+note+'</div><div class="card"><h3>Members not paid ('+str(no)+')</h3>'+rows+'</div></div>'
-
 def parse_demographics_xlsx(path):
  wb=load_workbook(path,data_only=True,read_only=True)
  names=wb.sheetnames
@@ -315,28 +316,13 @@ def parse_demographics_xlsx(path):
   raise ValueError('Missing juvenile membership growth worksheet')
  agews=find_sheet('Age Group Numbers Breakdown')
  age_totals={};age_areas={};age_schools={};warnings=[]
- # Read the workbook's hard-coded juvenile Boys/Girls summary.
- juvenile_gender={}
- for row in agews.iter_rows(values_only=True):
-  vals=list(row)
-  for j,v in enumerate(vals):
-   key=clean_name(v)
-   if key in ('TOTAL BOYS','TOTAL GIRLS'):
-    value=vals[j+1] if j+1<len(vals) else None
-    juvenile_gender['Boys' if key=='TOTAL BOYS' else 'Girls']=num(value)
- # Discover age-group columns from the actual workbook headings, not fixed positions.
- import re
- for col in range(1,45):
-  heading=clean_name(agews.cell(1,col).value)
-  match=re.match(r'^U(\d+) PLAYER AREA$',heading)
-  if not match:continue
-  g='U'+match.group(1)
+ for col,g in zip([1,4,7,10,13,16,19,22],['U12','U11','U10','U9','U8','U7','U6','U5']):
   areas={clean_name(agews.cell(r,col).value):num(agews.cell(r,col+1).value) for r in range(2,8) if agews.cell(r,col).value}
   schools={clean_name(agews.cell(r,col).value):num(agews.cell(r,col+1).value) for r in range(10,17) if agews.cell(r,col).value}
   total=num(agews.cell(8,col+1).value) or sum(areas.values())
   age_totals[g]=total;age_areas[g]=areas;age_schools[g]=schools
-  if sum(areas.values())!=total:warnings.append(f'{g} area breakdown sums to {sum(areas.values())}, summary total is {total}')
-  if sum(schools.values())!=total:warnings.append(f'{g} school breakdown sums to {sum(schools.values())}, summary total is {total}')
+  if sum(areas.values())!=total:warnings.append(f'{g} area breakdown sums to {sum(areas.values())}, total is {total}')
+  if sum(schools.values())!=total:warnings.append(f'{g} school breakdown sums to {sum(schools.values())}, total is {total}')
  def two_col(prefix,skip_totals=True):
   ws=find_sheet(prefix);d={}
   for row in ws.iter_rows(min_row=2,max_col=2,values_only=True):
@@ -352,42 +338,22 @@ def parse_demographics_xlsx(path):
  players_by_age={}
  for sheet_name in names:
   pws=wb[sheet_name]
-  header_row=None;name_col=None;school_col=None;dob_col=None;paid_col=None
+  header_row=None;name_col=None;school_col=None;dob_col=None
   for r in range(1,min(11,(pws.max_row or 10)+1)):
    row_headers={}
    for c in range(1,min(21,(pws.max_column or 20)+1)):
     h=clean_name(pws.cell(r,c).value)
     row_headers[h]=c
    if 'PLAYER NAME' in row_headers and 'SCHOOL' in row_headers:
-    header_row=r;name_col=row_headers['PLAYER NAME'];school_col=row_headers['SCHOOL'];dob_col=row_headers.get('DATE OF BIRTH');paid_col=next((c for h,c in row_headers.items() if 'PAID MEMBER' in h),None);break
+    header_row=r;name_col=row_headers['PLAYER NAME'];school_col=row_headers['SCHOOL'];dob_col=row_headers.get('DATE OF BIRTH');break
   if not (header_row and name_col and school_col):
    continue
-  # Trust only complete, valid age-group labels in worksheet names.
-  # Excel truncates long tab names at 31 characters (U14 can become U1).
-  tab_match=re.search(r'(?i)\bU\s*(\d{1,2})\b',sheet_name) or re.search(r'(?i)UNDER\s*(\d{1,2})',sheet_name)
-  tab_age=int(tab_match.group(1)) if tab_match else None
-  group=('U'+str(tab_age)) if tab_age is not None and 5 <= tab_age <= 18 else None
-  # Workbook's sequential player tabs are team cohorts, not individual ages.
-  # Players may be one year younger than their team designation.
-  team_tabs={'Players Names By Age Group - U1':'U13','Sheet25':'U12','Sheet26':'U11','Sheet27':'U10'}
-  if sheet_name in team_tabs: group=team_tabs[sheet_name]
-  # For truncated or generic tabs, the AGE column is more reliable than
-  # headings copied from another worksheet.
-  if not group:
-   age_col=None
-   for c in range(1,min(21,(pws.max_column or 20)+1)):
-    if clean_name(pws.cell(header_row,c).value)=='AGE': age_col=c;break
-   if age_col:
-    from collections import Counter
-    ages=[]
-    for rr in pws.iter_rows(min_row=header_row+1,max_col=max(age_col,name_col),values_only=True):
-     if not str(rr[name_col-1] or '').strip(): continue
-     try:
-      age=int(float(rr[age_col-1]))
-      if 5 <= age <= 18: ages.append(age)
-     except (TypeError,ValueError): pass
-    if ages: group='U'+str(Counter(ages).most_common(1)[0][0])
-  # DOB inference follows below if AGE is unavailable.
+  # First prefer an explicit Uxx / UNDER xx marker in the title or top rows.
+  probe=sheet_name+' '+ ' '.join(str(v or '') for row in pws.iter_rows(min_row=1,max_row=min(6,pws.max_row or 6),max_col=min(10,pws.max_column or 10),values_only=True) for v in row)
+  m=re.search(r'(?i)UNDER\s*(\d{1,2})',probe) or re.search(r'(?i)\bU\s*(\d{1,2})\b',probe)
+  group=('U'+str(int(m.group(1)))) if m else None
+  # If the sheet has a generic name, infer the group from DOB birth years and
+  # the latest populated membership year (e.g. 2026 - 2015 = U11).
   if not group and dob_col:
    birth_years=[]
    for row in pws.iter_rows(min_row=header_row+1,max_col=dob_col,values_only=True):
@@ -416,65 +382,26 @@ def parse_demographics_xlsx(path):
     inferred=ref_year-birth_year
     if 4 <= inferred <= 18: group='U'+str(inferred)
   if not group:
-   probe=' '.join(str(v or '') for row in pws.iter_rows(min_row=1,max_row=min(6,pws.max_row or 6),max_col=min(10,pws.max_column or 10),values_only=True) for v in row)
-   heading=re.search(r'(?i)UNDER\s*(\d{1,2})',probe) or re.search(r'(?i)\bU\s*(\d{1,2})\b',probe)
-   if heading and 5 <= int(heading.group(1)) <= 18: group='U'+str(int(heading.group(1)))
-  if not group:
    warnings.append(f'Could not determine age group for player worksheet: {sheet_name}')
    continue
   rows=[]
-  for row in pws.iter_rows(min_row=header_row+1,max_col=max(name_col,school_col,paid_col or 0),values_only=True):
+  for row in pws.iter_rows(min_row=header_row+1,max_col=max(name_col,school_col),values_only=True):
    player=' '.join(str(row[name_col-1] or '').strip().split())
    school=' '.join(str(row[school_col-1] or '').strip().split())
    if not player: continue
    if clean_name(player).startswith('UNDER '): continue
-   paid=clean_name(row[paid_col-1]) if paid_col else ''
-   rows.append({'name':player,'school':school,'paid':paid if paid in ('YES','NO') else 'NOT RECORDED'})
-  if rows: players_by_age.setdefault(group,[]).extend(rows)
-
- # Adult payment status: only numbered names below the membership-list header.
- adult_payment={}
- for category,prefix in [('Non-playing adults','Senior Adult Non Playing Member'),('Senior ladies','Senior Adult Ladies Members'),('Senior men','Senior Adult Mens Members')]:
-  aws=find_sheet(prefix);records=[];in_list=False;pay_col=3
-  for row in aws.iter_rows(values_only=True):
-   vals=list(row);name=clean_name(vals[1]) if len(vals)>1 else ''
-   if name.startswith('SENIOR ADULT') and 'MEMBERS' in name:
-    in_list=True
-    for idx,v in enumerate(vals):
-     if 'PAID MEMBER' in clean_name(v):pay_col=idx+1
-    continue
-   if not in_list:continue
-   number=vals[0] if vals else None
-   try:valid=float(number).is_integer() and float(number)>0
-   except (TypeError,ValueError):valid=False
-   if not valid or not name:continue
-   paid=clean_name(vals[pay_col-1]) if len(vals)>=pay_col else ''
-   records.append({'name':' '.join(str(vals[1]).split()),'paid':paid if paid in ('YES','NO') else 'NOT RECORDED'})
-  adult_payment[category]=records
+   rows.append({'name':player,'school':school})
+  if rows: players_by_age[group]=rows
 
  # Actual player-list tabs are authoritative for membership by age group.
  # This prevents stale summary cells from leaving the dashboard one player behind.
  for g,rows in players_by_age.items():
-  if g not in age_totals:
-   age_totals[g]=len(rows)
-   age_areas[g]={}
-   age_schools[g]={}
   if g in age_totals:
    summary_total=age_totals[g]
    actual_total=len(rows)
    if summary_total!=actual_total:
     warnings.append(f'{g} summary total is {summary_total}; player tab contains {actual_total}. Using player-tab count.')
    age_totals[g]=actual_total
-
- # School figures come from player lists. Preserve workbook catchment data even
- # when its independently maintained summary is out of date.
- from collections import Counter
- for g,rows in players_by_age.items():
-  school_counts=Counter(clean_name(x.get('school','')) or 'NOT RECORDED' for x in rows)
-  age_schools[g]=dict(school_counts)
-  area_sum=sum(age_areas.get(g,{}).values())
-  if area_sum!=len(rows):
-   warnings.append(f'{g} residential catchment sums to {area_sum}, player list has {len(rows)}; displaying source breakdown with warning.')
 
  # Senior Adult Non-Playing Members: count only the numbered member list,
  # not the yearly summary rows at the top of the worksheet.
@@ -541,7 +468,7 @@ def parse_demographics_xlsx(path):
  if sum(areas.values())!=total_players:warnings.append(f'Parish catchment sums to {sum(areas.values())}, latest player total is {total_players}')
  if sum(schools.values())!=total_players:warnings.append(f'School catchment sums to {sum(schools.values())}, latest player total is {total_players}')
  coaching,events=parse_integrated_tabs(wb)
- return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'players_by_age':players_by_age,'adult_payment':adult_payment,'juvenile_gender':juvenile_gender,'senior_adult_non_playing_count':senior_adult_non_playing_count,'senior_adult_non_playing_members':senior_adult_non_playing,'senior_adult_ladies_count':senior_adult_ladies_count,'senior_adult_ladies_members':senior_adult_ladies,'senior_adult_mens_count':senior_adult_mens_count,'senior_adult_mens_members':senior_adult_mens,'upcoming_events':events,'coaching':coaching,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
+ return {'age_totals':age_totals,'age_areas':age_areas,'age_schools':age_schools,'games':games,'growth':growth,'areas':areas,'schools':schools,'catchment':areas,'school_totals':schools,'players_by_age':players_by_age,'senior_adult_non_playing_count':senior_adult_non_playing_count,'senior_adult_non_playing_members':senior_adult_non_playing,'senior_adult_ladies_count':senior_adult_ladies_count,'senior_adult_ladies_members':senior_adult_ladies,'senior_adult_mens_count':senior_adult_mens_count,'senior_adult_mens_members':senior_adult_mens,'upcoming_events':events,'coaching':coaching,'warnings':warnings,'imported_at':datetime.now().isoformat(timespec='seconds')}
 
 
 def load_sync_status():
@@ -561,37 +488,7 @@ def google_credentials():
  except json.JSONDecodeError as ex:raise RuntimeError('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON') from ex
  from google.oauth2 import service_account
  return service_account.Credentials.from_service_account_info(
-  info,scopes=['https://www.googleapis.com/auth/drive'])
-
-def load_google_oauth_token():
- try:
-  with open(GOOGLE_OAUTH_TOKEN_FILE,encoding='utf8') as f:return json.load(f)
- except (OSError,json.JSONDecodeError):return {}
-
-def save_google_oauth_token(token):
- tmp=GOOGLE_OAUTH_TOKEN_FILE+'.tmp'
- with open(tmp,'w',encoding='utf8') as f:json.dump(token,f,indent=2)
- os.replace(tmp,GOOGLE_OAUTH_TOKEN_FILE)
-
-def google_oauth_access_token():
- import requests
- token=load_google_oauth_token();refresh=token.get('refresh_token','')
- if not refresh:raise RuntimeError('Google Drive is not connected. Open Compliance and click Connect Google Drive first.')
- if not GOOGLE_OAUTH_CLIENT_ID or not GOOGLE_OAUTH_CLIENT_SECRET:raise RuntimeError('Google OAuth client ID/secret are not configured in Render.')
- r=requests.post('https://oauth2.googleapis.com/token',data={'client_id':GOOGLE_OAUTH_CLIENT_ID,'client_secret':GOOGLE_OAUTH_CLIENT_SECRET,'refresh_token':refresh,'grant_type':'refresh_token'},timeout=30)
- if r.status_code!=200:raise RuntimeError(f'Google OAuth refresh failed ({r.status_code}): {(r.text or "")[:300]}')
- return r.json().get('access_token','')
-
-def google_upload_garda_form(filename,data,coach_name):
- import requests
- access=google_oauth_access_token()
- safe_coach=re.sub(r'[^A-Za-z0-9 ._\-]', '', str(coach_name or '')).strip() or 'Coach'
- ext=os.path.splitext(filename)[1].lower();stamp=datetime.now().strftime('%Y%m%d_%H%M%S');drive_name=f'{safe_coach} - Garda Vetting - {stamp}{ext}'
- metadata={'name':drive_name,'parents':[GARDA_VETTING_FOLDER_ID]};boundary='eg_'+secrets.token_hex(12)
- body=(f'--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+json.dumps(metadata)+f'\r\n--{boundary}\r\nContent-Type: application/octet-stream\r\n\r\n').encode()+data+f'\r\n--{boundary}--\r\n'.encode()
- r=requests.post('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink',data=body,headers={'Authorization':'Bearer '+access,'Content-Type':f'multipart/related; boundary={boundary}'},timeout=60)
- if r.status_code not in (200,201):raise RuntimeError(f'Google Drive upload failed ({r.status_code}): {(r.text or "")[:300]}')
- return r.json()
+  info,scopes=['https://www.googleapis.com/auth/drive.readonly'])
 
 def google_export_xlsx(file_id,destination):
  from google.auth.transport.requests import AuthorizedSession
@@ -627,28 +524,30 @@ def activate_demographics_from_xlsx(path):
 def session_sync_key(x):
  def gv(k,default=''):
   try:return x[k] if x[k] is not None else default
-  except (KeyError,TypeError,IndexError):return x.get(k,default) if hasattr(x,'get') else default
+  except (KeyError,TypeError):return x.get(k,default) if hasattr(x,'get') else default
  vals=[gv('date'),gv('school'),gv('coach'),gv('start'),gv('end'),
        gv('class_group',gv('group')),gv('title',gv('session'))]
  return '|'.join(' '.join(str(v or '').strip().lower().split()) for v in vals)
 
 def activate_schools_from_xlsx(path):
  global GPO_COSTS
- sessions=parse_schools_xlsx(path)
+ sessions=parse_schools_xlsx(path)  # validate before touching the live schedule
  gpo=parse_gpo_costs_xlsx(path)
- c=dbc();added=0
+ c=dbc()
  try:
-  existing=c.execute('select * from sessions').fetchall()
-  keys={session_sync_key(x) for x in existing}
-  ids={x['id'] for x in existing}
+  # Preserve operational updates made in the dashboard. Google owns timetable
+  # fields; the dashboard owns actual_status, attendance, notes and updated_at.
+  locked={}
+  for old in c.execute('select * from sessions').fetchall():
+   if old['updated_at'] or old['attendance'] is not None or (old['notes'] or '').strip() or old['actual_status']!=old['planned_status']:
+    locked[session_sync_key(old)]=(old['actual_status'],old['attendance'],old['notes'],old['updated_at'])
   c.execute('begin')
+  c.execute('delete from sessions')
   for s in sessions:
-   key=session_sync_key(s)
-   # Dashboard edits take priority. Never delete or overwrite existing rows.
-   # Workbook IDs are positional, so collisions must not overwrite edits.
-   if key in keys or s['id'] in ids:continue
-   c.execute('insert into sessions(id,date,day,school,coach,title,start,end,class_group,age_group,planned_status) values(?,?,?,?,?,?,?,?,?,?,?)',(s['id'],s['date'],s['day'],s['school'],s['coach'],s['session'],s['start'],s['end'],s['group'],s['age'],s['status']))
-   keys.add(key);ids.add(s['id']);added+=1
+   keep=locked.get(session_sync_key(s))
+   actual,attendance,notes,updated=(keep if keep else (s['status'],None,None,None))
+   c.execute('insert into sessions(id,date,day,school,coach,title,start,end,class_group,age_group,planned_status,actual_status,attendance,notes,updated_at) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    (s['id'],s['date'],s['day'],s['school'],s['coach'],s['session'],s['start'],s['end'],s['group'],s['age'],s['status'],actual,attendance,notes,updated))
   c.commit()
  except:
   c.rollback();raise
@@ -657,7 +556,7 @@ def activate_schools_from_xlsx(path):
  tmp=GPO_COST_FILE+'.tmp'
  with open(tmp,'w',encoding='utf8') as f:json.dump(gpo,f,indent=2,ensure_ascii=False)
  os.replace(tmp,GPO_COST_FILE);GPO_COSTS=load_gpo_costs()
- return {'sessions_in_google':len(sessions),'new_sessions_added':added,'existing_sessions_preserved':len(existing),'gpo_costs':{k:v.get('total',0) for k,v in GPO_COSTS.get('years',{}).items()}}
+ return {'sessions':len(sessions),'gpo_costs':{k:v.get('total',0) for k,v in GPO_COSTS.get('years',{}).items()}}
 
 def sync_google_sources():
  if not GOOGLE_SYNC_ENABLED:return {'enabled':False}
@@ -720,7 +619,7 @@ def okpw(p,x):
  try:s,h=x.split('$');return hmac.compare_digest(hp(p,bytes.fromhex(s)).split('$')[1],h)
  except:return False
 def init():
- c=dbc();c.executescript("""CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,name TEXT,email TEXT UNIQUE,password TEXT,role TEXT,coach_name TEXT,active INTEGER DEFAULT 1);CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,date TEXT,day TEXT,school TEXT,coach TEXT,title TEXT,start TEXT,end TEXT,class_group TEXT,age_group TEXT,planned_status TEXT,actual_status TEXT DEFAULT 'Scheduled',attendance INTEGER,notes TEXT,updated_at TEXT);CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,ts TEXT,user_email TEXT,action TEXT,session_id TEXT,detail TEXT);CREATE TABLE IF NOT EXISTS garda_forms(coach_key TEXT PRIMARY KEY,coach_name TEXT,drive_file_id TEXT,drive_name TEXT,web_view_link TEXT,uploaded_at TEXT);""")
+ c=dbc();c.executescript("""CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,name TEXT,email TEXT UNIQUE,password TEXT,role TEXT,coach_name TEXT,active INTEGER DEFAULT 1);CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,date TEXT,day TEXT,school TEXT,coach TEXT,title TEXT,start TEXT,end TEXT,class_group TEXT,age_group TEXT,planned_status TEXT,actual_status TEXT DEFAULT 'Scheduled',attendance INTEGER,notes TEXT,updated_at TEXT);CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,ts TEXT,user_email TEXT,action TEXT,session_id TEXT,detail TEXT);""")
  if c.execute('select count(*) from sessions').fetchone()[0]==0:
   data_path=os.path.join(BASE,'data.js')
   if os.path.exists(data_path):
@@ -824,10 +723,10 @@ def adult_members_drilldown(group):
 def page(title,b,u=None):
  nav=''
  if u:
-  nav=f'''<aside class="sidebar"><div class="brand"><img src="/club-jersey.png" alt="Eastern Gaels jersey"></div><nav class="side-nav"><a href="/" class="nav-home"><i><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5M5.5 10.5V20h13v-9.5M9.5 20v-6h5v6"/></svg></i><span>Club Overview</span></a><div class="nav-label">CLUB</div><a href="/schedule"><i><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M14 14h2M8 17h2M14 17h2"/></svg></i><span>Schools Schedule</span></a><a href="/demographics"><i><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3.5 20c.4-4 2.3-6 5.5-6s5.1 2 5.5 6M14 15c3.8-.7 6 1.1 6.5 5"/></svg></i><span>Club Demographics</span></a><a href="/coaching-team"><i><svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="3"/><path d="M6 21v-2c0-4 2-6 6-6s6 2 6 6v2M17.5 4.5l1 1 2-2"/></svg></i><span>Coaches &amp; Teams</span></a><a href="/compliance"><i><svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.2 8-8 9-4.8-1-8-4-8-9V6l8-3Zm-3.5 9 2.2 2.2 4.8-5"/></svg></i><span>Compliance</span></a><a href="/courses"><i><svg viewBox="0 0 24 24"><path d="m3 7 9-4 9 4-9 4-9-4ZM6 9.5V15c3 2.5 9 2.5 12 0V9.5M21 7v7"/></svg></i><span>Courses</span></a><a href="/games"><i><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m12 7 3 2.2-1.1 3.5h-3.8L9 9.2 12 7ZM5 10l4 1m10-1-4 1M8 19l2-6m6 6-2-6"/></svg></i><span>Games Played</span></a><a href="/membership"><i><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="11" r="2.2"/><path d="M5.5 16c.5-2 1.5-3 3-3s2.5 1 3 3M14 10h4M14 14h4"/></svg></i><span>Membership</span></a><div class="nav-label">MANAGE</div><a href="/reports"><i><svg viewBox="0 0 24 24"><path d="M5 21V10M12 21V4M19 21v-7M3 21h18"/></svg></i><span>Reports</span></a><a href="/admin"><i><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a8 8 0 0 0-1.7-1L14.5 3h-5L9 6.1a8 8 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 1.7 1l.5 3.1h5l.5-3.1a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5a7 7 0 0 0 .1-1Z"/></svg></i><span>Admin</span></a></nav><div class="side-bottom"><div class="avatar">{e(u['name'][:1])}</div><div><div class="user">{e(u['name'])}</div><a href="/logout">Sign out</a></div></div><div class="designer-footer"><img src="/simple-analytics.png" alt="Simple Analytics"><strong>Presenting Data Analytics Simply.</strong><span>Designed by Jude McNabb</span><span>Drogheda, Meath</span><span>Contact 087-9217352</span></div></aside>'''
+  nav=f'''<aside class="sidebar"><div class="brand"><img src="/club-jersey.png" alt="Eastern Gaels jersey"></div><nav class="side-nav"><a href="/" class="nav-home"><i>⌂</i><span>Club Overview</span></a><div class="nav-label">CLUB</div><a href="/schedule"><i>▦</i><span>Schools Schedule</span></a><a href="/demographics"><i>◉</i><span>Club Demographics</span></a><a href="/coaching-team"><i>♟</i><span>Coaches &amp; Teams</span></a><a href="/compliance"><i>✓</i><span>Compliance</span></a><a href="/courses"><i>◇</i><span>Courses</span></a><a href="/games"><i>◆</i><span>Games Played</span></a><a href="/membership"><i>♙</i><span>Membership</span></a><div class="nav-label">MANAGE</div><a href="/reports"><i>▥</i><span>Reports</span></a><a href="/admin"><i>⚙</i><span>Admin</span></a></nav><div class="side-bottom"><div class="avatar">{e(u['name'][:1])}</div><div><div class="user">{e(u['name'])}</div><a href="/logout">Sign out</a></div></div><div class="designer-footer"><img src="/simple-analytics.png" alt="Simple Analytics"><strong>Presenting Data Analytics Simply.</strong><span>Designed by Jude McNabb</span><span>Drogheda, Meath</span><span>Contact 087-9217352</span></div></aside>'''
  return f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(title)} · Eastern Gaels</title><style>
 :root{{--green:#0b4b2d;--green2:#11643b;--green3:#1f7a4b;--gold:#f3b61f;--blue:#4d8ee8;--purple:#9b6ee8;--coral:#ef766e;--teal:#25a6a1;--ink:#15241c;--muted:#738078;--bg:#f2f6fb;--line:#e4ebf2;--side:258px;--navy:#0e1b38;--cyan:#18b9b1;--pink:#e85ca4}}
-*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{font-family:"Segoe UI Variable","Aptos",Inter,"Segoe UI",system-ui,-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--ink);font-size:14px}}.sidebar{{position:fixed;inset:0 auto 0 0;width:var(--side);background:radial-gradient(circle at 50% 10%,#08713e 0,#064b2d 28%,#03351f 70%,#022b1a 100%);color:white;padding:22px 15px 16px;display:flex;flex-direction:column;z-index:20;box-shadow:8px 0 30px #092d1b18}}.brand{{display:flex;align-items:center;gap:12px;padding:0 8px 18px;border-bottom:1px solid #ffffff1f}}.brand img{{width:88px;height:104px;border-radius:12px;object-fit:contain;background:white;border:1px solid #ffffff38;box-shadow:0 3px 12px #0003;padding:3px}}.brand strong{{display:block;letter-spacing:.9px;font-size:14px;font-weight:850}}.brand small{{display:block;color:#b9d5c4;margin-top:3px;font-size:11px}}.side-nav{{display:flex;flex-direction:column;gap:3px;margin-top:14px;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding-bottom:8px;scrollbar-width:thin;scrollbar-color:#ffffff35 transparent}}.side-nav a{{color:#eaf5ee;text-decoration:none;padding:10px 11px;border-radius:10px;font-weight:650;display:flex;gap:11px;align-items:center;transition:.18s}}.side-nav a:hover{{background:#ffffff13;transform:translateX(2px)}}.side-nav a i{{font-style:normal;width:34px;height:34px;display:grid;place-items:center;color:#dff7e8;background:linear-gradient(145deg,#ffffff18,#ffffff08);border:1px solid #ffffff18;border-radius:10px;box-shadow:inset 0 1px 0 #ffffff18,0 4px 10px #001a0e26;transition:.18s ease;flex:0 0 34px}}.side-nav a i svg{{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}}.side-nav a:hover i{{color:#fff;background:#ffffff20;border-color:#ffffff2e;transform:translateY(-1px) scale(1.04)}}.side-nav .nav-home i{{color:#17351f;background:linear-gradient(145deg,#ffd65a,#f3b61f);border-color:#ffe28a}}.side-nav .nav-home{{background:#ffffff12;border-left:3px solid var(--gold)}}.nav-label{{font-size:9px;letter-spacing:1.6px;color:#8fb59e;margin:16px 11px 5px;font-weight:850}}.side-bottom{{flex:0 0 auto;margin-top:8px;border-top:1px solid #ffffff1f;padding:13px 8px 0;display:flex;align-items:center;gap:10px}}.avatar{{width:34px;height:34px;border-radius:50%;background:#ffffff18;display:grid;place-items:center;font-weight:850;color:var(--gold)}}.side-bottom .user{{font-weight:750;font-size:12px}}.side-bottom a{{color:#bcd4c5;text-decoration:none;font-size:11px}}.designer-footer{{flex:0 0 auto;border-top:1px solid #ffffff1f;margin-top:12px;padding:12px 8px 10px;text-align:center;color:#bcd4c5;background:#022f1dcc;border-radius:0 0 10px 10px}}.designer-footer img{{display:block;width:100%;max-width:150px;height:58px;object-fit:contain;object-position:center;margin:0 auto 9px;border-radius:8px;border:1px solid #ffffff20;background:#fff}}.designer-footer strong{{display:block;color:#fff;font-size:10px;line-height:1.35;margin-bottom:5px}}.designer-footer span{{display:block;font-size:9px;line-height:1.45}}header{{margin-left:var(--side);background:#ffffffea;backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding:17px 28px;position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between}}header h1{{margin:0;color:var(--navy);font-size:21px;letter-spacing:-.4px}}header small{{color:var(--muted);font-weight:600}}main{{margin-left:var(--side);padding:27px 30px 50px;max-width:1580px}}h2{{font-size:22px;letter-spacing:-.5px;margin:4px 0 5px}}h3{{font-size:15px;margin:0 0 13px;color:#213a2a}}.eyebrow{{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--green3);font-weight:850}}.hero{{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin:3px 0 22px}}.hero h2{{font-size:28px;margin:4px 0}}.hero p{{margin:0;color:var(--muted)}}.card{{background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%);padding:19px;border-radius:16px;margin:14px 0;box-shadow:0 8px 24px #173b2510;border:1px solid #e7edf3}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}}.grid2{{display:grid;grid-template-columns:1.25fr 1fr;gap:14px}}.overview-charts{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:14px 0}}.overview-charts .card{{min-width:0;padding:16px}}.overview-charts .section-title h3{{font-size:16px}}.overview-charts .card{{box-shadow:0 12px 28px #183b2a14,0 2px 5px #10251a0d;transform:translateZ(0)}}.overview-charts .svgchart svg{{filter:drop-shadow(0 7px 7px rgba(20,50,35,.12))}}.overview-charts .svgchart rect{{filter:drop-shadow(3px 5px 3px rgba(14,42,28,.18));transition:.18s ease;transform-box:fill-box;transform-origin:center}}.overview-charts .svgchart rect:hover{{filter:drop-shadow(4px 7px 4px rgba(14,42,28,.25));transform:translateY(-2px)}}.pie-layout svg{{filter:drop-shadow(7px 10px 7px rgba(12,43,28,.20));transform:perspective(700px) rotateX(7deg);transform-origin:center}}.pie-layout svg path{{filter:drop-shadow(1px 2px 1px rgba(0,0,0,.15))}}.compliance-ring{{box-shadow:0 14px 20px rgba(7,66,40,.20),inset 0 2px 3px rgba(255,255,255,.6),inset 0 -5px 8px rgba(0,0,0,.10)!important;transform:perspective(700px) rotateX(5deg)}}.compliance-ring>div{{box-shadow:inset 0 3px 5px rgba(15,45,30,.08),0 2px 5px rgba(255,255,255,.65)!important}}.qual-bars .hbar>div{{box-shadow:inset 0 2px 2px rgba(255,255,255,.75),0 4px 7px rgba(18,45,32,.10)}}.qual-bars .hbar i{{box-shadow:inset 0 3px 3px rgba(255,255,255,.28),inset 0 -3px 4px rgba(0,0,0,.13),3px 4px 5px rgba(18,45,32,.16)}}.pie-layout{{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(120px,.85fr);align-items:center;gap:8px;min-height:230px}}.pie-layout svg{{width:100%;height:auto;display:block}}.chart-legend{{display:flex;flex-direction:column;gap:10px;font-size:12px}}.chart-legend span{{display:grid;grid-template-columns:12px 1fr auto;align-items:center;gap:7px;white-space:nowrap}}.chart-legend i{{width:11px;height:11px;border-radius:50%;display:block}}.chart-legend b{{color:var(--navy);font-size:12px}}.compliance-layout{{display:grid;grid-template-columns:minmax(150px,1fr) minmax(135px,.85fr);align-items:center;gap:14px;min-height:230px}}.compliance-ring{{width:176px;height:176px;border-radius:50%;display:grid;place-items:center;margin:auto;box-shadow:inset 0 0 0 1px #ffffff}}.compliance-ring>div{{width:104px;height:104px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 1px 6px #10251a12}}.compliance-ring strong{{font-size:31px;line-height:1;color:var(--navy)}}.compliance-ring small{{font-size:11px;color:#31455d;margin-top:5px}}.qual-bars{{padding-top:8px}}.qual-bars .hbar{{grid-template-columns:100px minmax(120px,1fr) 28px;gap:9px;margin:13px 0}}.qual-bars .hbar>span{{text-align:right;font-size:12px;color:#31415b}}.qual-bars .hbar>div{{height:18px;background:#edf1f6;border-radius:5px;overflow:hidden}}.qual-bars .hbar i{{display:block;height:100%;border-radius:5px}}.qual-bars .hbar>b{{font-size:12px;color:var(--navy)}}@media(max-width:1250px){{.overview-charts{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}@media(max-width:850px){{.overview-charts{{grid-template-columns:1fr}}}}.grid3{{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}}.kpi-grid{{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}}.kpi-grid .card{{margin:0}}.panel-title{{display:flex;align-items:center;gap:9px;font-weight:850;color:var(--navy)}}.panel-title:before{{content:"";width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,#e8f8ef,#dff2ff);box-shadow:inset 0 0 0 1px #ffffff}}.stat{{font-size:32px;font-weight:900;color:var(--navy);letter-spacing:-1.2px;line-height:1}}.kpi{{position:relative;overflow:hidden;padding:20px 20px 17px;border:0;box-shadow:0 5px 20px #173b250d}}.kpi:before{{content:'';position:absolute;inset:0 auto 0 0;width:4px;background:var(--accent,var(--green3))}}.kpi:nth-child(2){{--accent:var(--blue)}}.kpi:nth-child(3){{--accent:var(--purple)}}.kpi:nth-child(4){{--accent:var(--gold)}}.kpi:nth-child(5){{--accent:var(--coral)}}.kpi b{{display:block;margin-top:8px;font-size:12px}}.kpi small{{display:block;color:var(--muted);margin-top:3px;font-size:11px}}.metric-icon{{float:right;width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#dcf8e8,#effcf5);display:grid;place-items:center;color:var(--green);font-weight:900}}.barrow{{display:grid;grid-template-columns:minmax(92px,1.25fr) 3fr 38px;gap:9px;align-items:center;margin:10px 0;font-size:12px}}.barrow b:first-child{{font-weight:650;color:#46554b}}.bartrack{{height:12px;background:#edf1f6;border-radius:999px;overflow:hidden}}.barfill{{height:100%;background:linear-gradient(90deg,#12b76a,#45d38d);border-radius:999px;min-width:2px}}.barrow:nth-child(4n+2) .barfill{{background:linear-gradient(90deg,#2f80ed,#6aa9ff)}}.barrow:nth-child(4n+3) .barfill{{background:linear-gradient(90deg,#7c3aed,#b06cff)}}.barrow:nth-child(4n+4) .barfill{{background:linear-gradient(90deg,#f5a400,#ffd24f)}}.chartlink{{color:inherit;text-decoration:none}}.chartlink .card{{transition:.18s}}.chartlink .card:hover{{transform:translateY(-2px);box-shadow:0 9px 25px #173b2515}}.progress{{height:8px;background:#e9eeea;border-radius:999px;overflow:hidden;margin-top:8px}}.progress span{{display:block;height:100%;background:linear-gradient(90deg,var(--green3),#55b97d)}}.donut{{width:142px;height:142px;border-radius:50%;margin:12px auto;display:grid;place-items:center;background:conic-gradient(var(--green3) 0 var(--done),var(--coral) var(--done) var(--cancel),var(--gold) var(--cancel) var(--closed),#dfe5e0 var(--closed) 100%)}}.donut:after{{content:'';width:86px;height:86px;background:white;border-radius:50%}}.legend{{display:flex;gap:12px;flex-wrap:wrap;font-size:12px}}.dot{{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;background:var(--green3)}}.muted{{color:var(--muted)}}.session{{border-left:4px solid var(--blue)}}.badge{{display:inline-block;padding:4px 9px;border-radius:999px;background:#e8f4ec;font-size:11px;font-weight:750}}.Completed{{background:#def3e6;color:#21643b}}.Cancelled{{background:#fde4e1;color:#9b3833}}.Rescheduled{{background:#fff0ca;color:#7a5900}}.expired,.urgent{{background:#fde4e1;color:#9b3833}}.warning{{background:#fff0ca;color:#7a5900}}.unknown{{background:#edf0f2;color:#59656a}}.valid{{background:#def3e6;color:#21643b}}button,.btn{{display:inline-block;border:0;background:var(--green);color:#fff;padding:10px 14px;border-radius:9px;font-weight:720;text-decoration:none;cursor:pointer;box-shadow:0 2px 8px #0b4b2d18}}button:hover,.btn:hover{{background:var(--green2)}}.secondary{{background:#edf1ee!important;color:#25352a!important;box-shadow:none!important}}input,select,textarea{{width:100%;padding:10px 11px;border:1px solid #ccd7cf;border-radius:9px;font:inherit;background:white}}label{{display:block;font-weight:700;margin:10px 0 5px;font-size:12px}}.row{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}.actions{{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}}table{{width:100%;border-collapse:collapse;background:#fff}}th,td{{padding:11px 10px;border-bottom:1px solid var(--line);text-align:left}}th{{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);background:#fafbfa}}tr:hover td{{background:#fbfdfb}}.tw{{overflow:auto;border-radius:11px;border:1px solid var(--line)}}.login{{max-width:430px;margin:45px auto}}.quick{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}}.quick a{{text-decoration:none;color:inherit;background:white;border:1px solid var(--line);border-radius:12px;padding:15px;transition:.18s}}.quick a:hover{{transform:translateY(-2px);border-color:#bfd3c5}}.quick b{{display:block;color:var(--green);margin-bottom:4px}}.pill{{display:inline-block;border-radius:999px;padding:5px 9px;font-size:10px;font-weight:800;background:#edf7f1;color:var(--green)}}.section-title{{display:flex;align-items:center;justify-content:space-between;margin:24px 0 7px}}.section-title h3{{margin:0;font-size:17px}}.spark{{height:92px;display:flex;align-items:flex-end;gap:8px;padding-top:10px}}.spark span{{flex:1;border-radius:7px 7px 2px 2px;background:linear-gradient(180deg,#4d8ee8,#82b1f0);min-height:8px;position:relative}}.spark span:nth-child(2){{background:linear-gradient(180deg,#9b6ee8,#b99bf0)}}.spark span:nth-child(3){{background:linear-gradient(180deg,#25a6a1,#72c9c4)}}.spark span:nth-child(4){{background:linear-gradient(180deg,#f3b61f,#f7d66f)}}.spark-labels{{display:flex;justify-content:space-around;font-size:10px;color:var(--muted);margin-top:5px}}.alert-list{{display:grid;gap:8px}}.alert-item{{padding:11px 12px;border-radius:10px;background:#fbf3dc;border-left:3px solid var(--gold);font-size:12px}}.alert-item.good{{background:#eaf6ee;border-color:var(--green3)}}
+*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{font-family:"Segoe UI Variable","Aptos",Inter,"Segoe UI",system-ui,-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--ink);font-size:14px}}.sidebar{{position:fixed;inset:0 auto 0 0;width:var(--side);background:radial-gradient(circle at 50% 10%,#08713e 0,#064b2d 28%,#03351f 70%,#022b1a 100%);color:white;padding:22px 15px 16px;display:flex;flex-direction:column;z-index:20;box-shadow:8px 0 30px #092d1b18}}.brand{{display:flex;align-items:center;gap:12px;padding:0 8px 18px;border-bottom:1px solid #ffffff1f}}.brand img{{width:88px;height:104px;border-radius:12px;object-fit:contain;background:white;border:1px solid #ffffff38;box-shadow:0 3px 12px #0003;padding:3px}}.brand strong{{display:block;letter-spacing:.9px;font-size:14px;font-weight:850}}.brand small{{display:block;color:#b9d5c4;margin-top:3px;font-size:11px}}.side-nav{{display:flex;flex-direction:column;gap:3px;margin-top:14px;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding-bottom:8px;scrollbar-width:thin;scrollbar-color:#ffffff35 transparent}}.side-nav a{{color:#eaf5ee;text-decoration:none;padding:10px 11px;border-radius:10px;font-weight:650;display:flex;gap:11px;align-items:center;transition:.18s}}.side-nav a:hover{{background:#ffffff13;transform:translateX(2px)}}.side-nav a i{{font-style:normal;width:22px;height:22px;display:grid;place-items:center;color:#b8d6c3;font-size:15px}}.side-nav .nav-home{{background:#ffffff12;border-left:3px solid var(--gold)}}.nav-label{{font-size:9px;letter-spacing:1.6px;color:#8fb59e;margin:16px 11px 5px;font-weight:850}}.side-bottom{{flex:0 0 auto;margin-top:8px;border-top:1px solid #ffffff1f;padding:13px 8px 0;display:flex;align-items:center;gap:10px}}.avatar{{width:34px;height:34px;border-radius:50%;background:#ffffff18;display:grid;place-items:center;font-weight:850;color:var(--gold)}}.side-bottom .user{{font-weight:750;font-size:12px}}.side-bottom a{{color:#bcd4c5;text-decoration:none;font-size:11px}}.designer-footer{{flex:0 0 auto;border-top:1px solid #ffffff1f;margin-top:12px;padding:12px 8px 10px;text-align:center;color:#bcd4c5;background:#022f1dcc;border-radius:0 0 10px 10px}}.designer-footer img{{display:block;width:100%;max-width:150px;height:58px;object-fit:contain;object-position:center;margin:0 auto 9px;border-radius:8px;border:1px solid #ffffff20;background:#fff}}.designer-footer strong{{display:block;color:#fff;font-size:10px;line-height:1.35;margin-bottom:5px}}.designer-footer span{{display:block;font-size:9px;line-height:1.45}}header{{margin-left:var(--side);background:#ffffffea;backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding:17px 28px;position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between}}header h1{{margin:0;color:var(--navy);font-size:21px;letter-spacing:-.4px}}header small{{color:var(--muted);font-weight:600}}main{{margin-left:var(--side);padding:27px 30px 50px;max-width:1580px}}h2{{font-size:22px;letter-spacing:-.5px;margin:4px 0 5px}}h3{{font-size:15px;margin:0 0 13px;color:#213a2a}}.eyebrow{{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--green3);font-weight:850}}.hero{{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin:3px 0 22px}}.hero h2{{font-size:28px;margin:4px 0}}.hero p{{margin:0;color:var(--muted)}}.card{{background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%);padding:19px;border-radius:16px;margin:14px 0;box-shadow:0 8px 24px #173b2510;border:1px solid #e7edf3}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}}.grid2{{display:grid;grid-template-columns:1.25fr 1fr;gap:14px}}.overview-charts{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:14px 0}}.overview-charts .card{{min-width:0;padding:16px}}.overview-charts .section-title h3{{font-size:16px}}.overview-charts .card{{box-shadow:0 12px 28px #183b2a14,0 2px 5px #10251a0d;transform:translateZ(0)}}.overview-charts .svgchart svg{{filter:drop-shadow(0 7px 7px rgba(20,50,35,.12))}}.overview-charts .svgchart rect{{filter:drop-shadow(3px 5px 3px rgba(14,42,28,.18));transition:.18s ease;transform-box:fill-box;transform-origin:center}}.overview-charts .svgchart rect:hover{{filter:drop-shadow(4px 7px 4px rgba(14,42,28,.25));transform:translateY(-2px)}}.pie-layout svg{{filter:drop-shadow(7px 10px 7px rgba(12,43,28,.20));transform:perspective(700px) rotateX(7deg);transform-origin:center}}.pie-layout svg path{{filter:drop-shadow(1px 2px 1px rgba(0,0,0,.15))}}.compliance-ring{{box-shadow:0 14px 20px rgba(7,66,40,.20),inset 0 2px 3px rgba(255,255,255,.6),inset 0 -5px 8px rgba(0,0,0,.10)!important;transform:perspective(700px) rotateX(5deg)}}.compliance-ring>div{{box-shadow:inset 0 3px 5px rgba(15,45,30,.08),0 2px 5px rgba(255,255,255,.65)!important}}.qual-bars .hbar>div{{box-shadow:inset 0 2px 2px rgba(255,255,255,.75),0 4px 7px rgba(18,45,32,.10)}}.qual-bars .hbar i{{box-shadow:inset 0 3px 3px rgba(255,255,255,.28),inset 0 -3px 4px rgba(0,0,0,.13),3px 4px 5px rgba(18,45,32,.16)}}.pie-layout{{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(120px,.85fr);align-items:center;gap:8px;min-height:230px}}.pie-layout svg{{width:100%;height:auto;display:block}}.chart-legend{{display:flex;flex-direction:column;gap:10px;font-size:12px}}.chart-legend span{{display:grid;grid-template-columns:12px 1fr auto;align-items:center;gap:7px;white-space:nowrap}}.chart-legend i{{width:11px;height:11px;border-radius:50%;display:block}}.chart-legend b{{color:var(--navy);font-size:12px}}.compliance-layout{{display:grid;grid-template-columns:minmax(150px,1fr) minmax(135px,.85fr);align-items:center;gap:14px;min-height:230px}}.compliance-ring{{width:176px;height:176px;border-radius:50%;display:grid;place-items:center;margin:auto;box-shadow:inset 0 0 0 1px #ffffff}}.compliance-ring>div{{width:104px;height:104px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 1px 6px #10251a12}}.compliance-ring strong{{font-size:31px;line-height:1;color:var(--navy)}}.compliance-ring small{{font-size:11px;color:#31455d;margin-top:5px}}.qual-bars{{padding-top:8px}}.qual-bars .hbar{{grid-template-columns:100px minmax(120px,1fr) 28px;gap:9px;margin:13px 0}}.qual-bars .hbar>span{{text-align:right;font-size:12px;color:#31415b}}.qual-bars .hbar>div{{height:18px;background:#edf1f6;border-radius:5px;overflow:hidden}}.qual-bars .hbar i{{display:block;height:100%;border-radius:5px}}.qual-bars .hbar>b{{font-size:12px;color:var(--navy)}}@media(max-width:1250px){{.overview-charts{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}@media(max-width:850px){{.overview-charts{{grid-template-columns:1fr}}}}.grid3{{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}}.kpi-grid{{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}}.kpi-grid .card{{margin:0}}.panel-title{{display:flex;align-items:center;gap:9px;font-weight:850;color:var(--navy)}}.panel-title:before{{content:"";width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,#e8f8ef,#dff2ff);box-shadow:inset 0 0 0 1px #ffffff}}.stat{{font-size:32px;font-weight:900;color:var(--navy);letter-spacing:-1.2px;line-height:1}}.kpi{{position:relative;overflow:hidden;padding:20px 20px 17px;border:0;box-shadow:0 5px 20px #173b250d}}.kpi:before{{content:'';position:absolute;inset:0 auto 0 0;width:4px;background:var(--accent,var(--green3))}}.kpi:nth-child(2){{--accent:var(--blue)}}.kpi:nth-child(3){{--accent:var(--purple)}}.kpi:nth-child(4){{--accent:var(--gold)}}.kpi:nth-child(5){{--accent:var(--coral)}}.kpi b{{display:block;margin-top:8px;font-size:12px}}.kpi small{{display:block;color:var(--muted);margin-top:3px;font-size:11px}}.metric-icon{{float:right;width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#dcf8e8,#effcf5);display:grid;place-items:center;color:var(--green);font-weight:900}}.barrow{{display:grid;grid-template-columns:minmax(92px,1.25fr) 3fr 38px;gap:9px;align-items:center;margin:10px 0;font-size:12px}}.barrow b:first-child{{font-weight:650;color:#46554b}}.bartrack{{height:12px;background:#edf1f6;border-radius:999px;overflow:hidden}}.barfill{{height:100%;background:linear-gradient(90deg,#12b76a,#45d38d);border-radius:999px;min-width:2px}}.barrow:nth-child(4n+2) .barfill{{background:linear-gradient(90deg,#2f80ed,#6aa9ff)}}.barrow:nth-child(4n+3) .barfill{{background:linear-gradient(90deg,#7c3aed,#b06cff)}}.barrow:nth-child(4n+4) .barfill{{background:linear-gradient(90deg,#f5a400,#ffd24f)}}.chartlink{{color:inherit;text-decoration:none}}.chartlink .card{{transition:.18s}}.chartlink .card:hover{{transform:translateY(-2px);box-shadow:0 9px 25px #173b2515}}.progress{{height:8px;background:#e9eeea;border-radius:999px;overflow:hidden;margin-top:8px}}.progress span{{display:block;height:100%;background:linear-gradient(90deg,var(--green3),#55b97d)}}.donut{{width:142px;height:142px;border-radius:50%;margin:12px auto;display:grid;place-items:center;background:conic-gradient(var(--green3) 0 var(--done),var(--coral) var(--done) var(--cancel),var(--gold) var(--cancel) var(--closed),#dfe5e0 var(--closed) 100%)}}.donut:after{{content:'';width:86px;height:86px;background:white;border-radius:50%}}.legend{{display:flex;gap:12px;flex-wrap:wrap;font-size:12px}}.dot{{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;background:var(--green3)}}.muted{{color:var(--muted)}}.session{{border-left:4px solid var(--blue)}}.badge{{display:inline-block;padding:4px 9px;border-radius:999px;background:#e8f4ec;font-size:11px;font-weight:750}}.Completed{{background:#def3e6;color:#21643b}}.Cancelled{{background:#fde4e1;color:#9b3833}}.Rescheduled{{background:#fff0ca;color:#7a5900}}.expired,.urgent{{background:#fde4e1;color:#9b3833}}.warning{{background:#fff0ca;color:#7a5900}}.unknown{{background:#edf0f2;color:#59656a}}.valid{{background:#def3e6;color:#21643b}}button,.btn{{display:inline-block;border:0;background:var(--green);color:#fff;padding:10px 14px;border-radius:9px;font-weight:720;text-decoration:none;cursor:pointer;box-shadow:0 2px 8px #0b4b2d18}}button:hover,.btn:hover{{background:var(--green2)}}.secondary{{background:#edf1ee!important;color:#25352a!important;box-shadow:none!important}}input,select,textarea{{width:100%;padding:10px 11px;border:1px solid #ccd7cf;border-radius:9px;font:inherit;background:white}}label{{display:block;font-weight:700;margin:10px 0 5px;font-size:12px}}.row{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}.actions{{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}}table{{width:100%;border-collapse:collapse;background:#fff}}th,td{{padding:11px 10px;border-bottom:1px solid var(--line);text-align:left}}th{{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);background:#fafbfa}}tr:hover td{{background:#fbfdfb}}.tw{{overflow:auto;border-radius:11px;border:1px solid var(--line)}}.login{{max-width:430px;margin:45px auto}}.quick{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}}.quick a{{text-decoration:none;color:inherit;background:white;border:1px solid var(--line);border-radius:12px;padding:15px;transition:.18s}}.quick a:hover{{transform:translateY(-2px);border-color:#bfd3c5}}.quick b{{display:block;color:var(--green);margin-bottom:4px}}.pill{{display:inline-block;border-radius:999px;padding:5px 9px;font-size:10px;font-weight:800;background:#edf7f1;color:var(--green)}}.section-title{{display:flex;align-items:center;justify-content:space-between;margin:24px 0 7px}}.section-title h3{{margin:0;font-size:17px}}.spark{{height:92px;display:flex;align-items:flex-end;gap:8px;padding-top:10px}}.spark span{{flex:1;border-radius:7px 7px 2px 2px;background:linear-gradient(180deg,#4d8ee8,#82b1f0);min-height:8px;position:relative}}.spark span:nth-child(2){{background:linear-gradient(180deg,#9b6ee8,#b99bf0)}}.spark span:nth-child(3){{background:linear-gradient(180deg,#25a6a1,#72c9c4)}}.spark span:nth-child(4){{background:linear-gradient(180deg,#f3b61f,#f7d66f)}}.spark-labels{{display:flex;justify-content:space-around;font-size:10px;color:var(--muted);margin-top:5px}}.alert-list{{display:grid;gap:8px}}.alert-item{{padding:11px 12px;border-radius:10px;background:#fbf3dc;border-left:3px solid var(--gold);font-size:12px}}.alert-item.good{{background:#eaf6ee;border-color:var(--green3)}}
 @media(max-width:1200px){{.kpi-grid{{grid-template-columns:repeat(3,1fr)}}}}@media(max-width:1050px){{.grid2,.grid3{{grid-template-columns:1fr}}.quick{{grid-template-columns:1fr 1fr}}}}
 @media(max-width:800px){{:root{{--side:76px}}.brand div,.side-nav span,.nav-label,.side-bottom>div:not(.avatar),.designer-footer{{display:none}}.brand{{justify-content:center;padding-left:0;padding-right:0}}.brand img{{width:48px;height:48px}}.side-nav a{{justify-content:center;padding:10px 6px}}.side-nav a i{{width:28px}}header,main{{margin-left:var(--side)}}main{{padding:18px}}.hero{{align-items:flex-start;flex-direction:column}}}}
 @media(max-width:650px){{.kpi-grid{{grid-template-columns:1fr 1fr}}}}@media(max-width:520px){{:root{{--side:0px}}.sidebar{{position:relative;width:100%;height:auto;padding:10px 12px;flex-direction:row;align-items:center}}.brand{{border:0;padding:0}}.brand img{{width:42px;height:42px}}.side-nav{{margin:0 0 0 auto;flex-direction:row}}.side-nav a{{display:none}}.side-nav a.nav-home{{display:flex;background:#ffffff12}}.side-bottom{{display:none}}header,main{{margin-left:0}}header{{padding:13px 15px}}main{{padding:14px}}.row,.quick{{grid-template-columns:1fr}}.grid{{grid-template-columns:1fr 1fr}}.kpi{{padding:16px}}.stat{{font-size:26px}}}}
@@ -1041,15 +940,8 @@ td,th{{padding:6px 8px;font-size:10px}}
  .card{{max-width:100%!important}}
  .course-facts{{grid-template-columns:1fr!important}}
 
- .grid2>*{{min-width:0!important}}
- .tw{{display:block!important;width:100%!important;max-width:100%!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-x pan-y!important;overscroll-behavior-x:contain}}
+ .tw{{width:100%!important;max-width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}}
  table{{min-width:560px}}
- .compliance-scroll{{position:relative!important;width:100%!important;max-width:calc(100vw - 20px)!important;overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-x!important}}
- .compliance-scroll table{{width:max-content!important;min-width:780px!important}}
- .compliance-scroll th,.compliance-scroll td{{white-space:nowrap!important}}
- .compliance-scroll td:last-child{{min-width:250px!important;white-space:normal!important}}
- .compliance-scroll td:first-child,.compliance-scroll th:first-child{{position:sticky!important;left:0!important;z-index:2!important;background:#fff!important;box-shadow:4px 0 8px rgba(0,0,0,.06)}}
- .compliance-scroll th:first-child{{background:#dfe7ea!important;z-index:3!important}}
  main>.card:last-child{{max-width:100%!important;overflow:hidden!important}}
 }}
 </style></head><body>{nav}<script>document.addEventListener('DOMContentLoaded',()=>{{let p=location.pathname;document.querySelectorAll('.side-nav a').forEach(a=>{{let h=a.getAttribute('href');if((h==='/'&&p==='/')||(h!=='/'&&p.startsWith(h)))a.classList.add('active')}})}})</script><header><div class="club-head"><strong>EASTERN GAELS</strong><span>GAELIC GAMES CLUB</span><small>OUR CLUB &nbsp;•&nbsp; OUR COMMUNITY &nbsp;•&nbsp; OUR FUTURE</small></div><div class="head-right"><em>More Than A Club</em><span class="date-chip">{datetime.now().strftime('%d %b %Y')}</span></div></header><main>{b}</main></body></html>'''
@@ -1078,19 +970,6 @@ class H(BaseHTTPRequestHandler):
    if body.endswith(b'\r\n'):body=body[:-2]
    return os.path.basename(name.replace('\\','/')),body
   return None,None
- def upload_file_with_field(self, file_field, text_field):
-  n=int(self.headers.get('Content-Length','0'));raw=self.rfile.read(n);ct=self.headers.get('Content-Type','')
-  m=re.search(r'boundary=(?:\"([^\"]+)\"|([^;]+))',ct)
-  if not m:return None,None,''
-  boundary=(m.group(1) or m.group(2)).strip().encode();name=None;data=None;text=''
-  for part in raw.split(b'--'+boundary):
-   head,sep,body=part.partition(b'\r\n\r\n')
-   if not sep:continue
-   if body.endswith(b'\r\n'):body=body[:-2]
-   if (('name="'+file_field+'"').encode() in head) and b'filename=' in head:
-    fm=re.search(br'filename="([^"]*)"',head);name=os.path.basename((fm.group(1).decode('utf-8',errors='ignore') if fm else 'upload').replace('\\','/'));data=body
-   elif (('name="'+text_field+'"').encode() in head): text=body.decode('utf-8',errors='ignore').strip()
-  return name,data,text
  def user(self):
   z=SimpleCookie(self.headers.get('Cookie'));sid=z.get('egsid');uid=SESS.get(sid.value) if sid else None
   if not uid:return None
@@ -1127,25 +1006,6 @@ class H(BaseHTTPRequestHandler):
    z=SimpleCookie(self.headers.get('Cookie'));sid=z.get('egsid');SESS.pop(sid.value,None) if sid else None;c.close();self.send_response(303);self.send_header('Location','/login');self.send_header('Set-Cookie','egsid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax');self.end_headers();return
   u=self.need()
   if not u:c.close();return
-  if path=='/google-oauth/start':
-   if not GOOGLE_OAUTH_CLIENT_ID or not GOOGLE_OAUTH_CLIENT_SECRET:
-    c.close();return self.out(page('Google Drive','<div class="card"><h2>Google OAuth is not configured in Render.</h2><a class="btn" href="/compliance">Back</a></div>',u),500)
-   state=secrets.token_urlsafe(32);GOOGLE_OAUTH_STATES[state]={'uid':u['id'],'expires':time.time()+600}
-   params={'client_id':GOOGLE_OAUTH_CLIENT_ID,'redirect_uri':GOOGLE_OAUTH_REDIRECT_URI,'response_type':'code','scope':'https://www.googleapis.com/auth/drive','access_type':'offline','prompt':'consent','state':state}
-   c.close();return self.red('https://accounts.google.com/o/oauth2/v2/auth?'+urlencode(params))
-  if path=='/oauth2callback':
-   import requests
-   state=q.get('state',[''])[0];code=q.get('code',[''])[0];err=q.get('error',[''])[0];st=GOOGLE_OAUTH_STATES.pop(state,None)
-   if err or not st or st.get('uid')!=u['id'] or st.get('expires',0)<time.time() or not code:
-    c.close();return self.out(page('Google Drive','<div class="card"><h2>Google Drive connection was not completed.</h2><p>'+e(err or 'Invalid or expired OAuth response.')+'</p><a class="btn" href="/compliance">Back</a></div>',u),400)
-   r=requests.post('https://oauth2.googleapis.com/token',data={'client_id':GOOGLE_OAUTH_CLIENT_ID,'client_secret':GOOGLE_OAUTH_CLIENT_SECRET,'code':code,'grant_type':'authorization_code','redirect_uri':GOOGLE_OAUTH_REDIRECT_URI},timeout=30)
-   if r.status_code!=200:
-    c.close();return self.out(page('Google Drive',f'<div class="card"><h2>Could not connect Google Drive</h2><p>{e((r.text or "")[:500])}</p><a class="btn" href="/compliance">Back</a></div>',u),500)
-   tok=r.json();oldtok=load_google_oauth_token();refresh=tok.get('refresh_token') or oldtok.get('refresh_token')
-   if not refresh:
-    c.close();return self.out(page('Google Drive','<div class="card"><h2>No refresh token was returned by Google.</h2><p>Please try Connect Google Drive again.</p><a class="btn" href="/compliance">Back</a></div>',u),500)
-   save_google_oauth_token({'refresh_token':refresh,'connected_at':datetime.now().isoformat(timespec='seconds')})
-   c.close();return self.red('/compliance')
   if path.startswith('/members/'):
    group=path.rstrip('/').split('/')[-1]
    body=adult_members_drilldown(group)
@@ -1179,8 +1039,7 @@ class H(BaseHTTPRequestHandler):
    evrows=''.join(f'<tr><td><b>{e(x.get("event",""))}</b></td><td>{e(x.get("venue",""))}</td><td>{e(x.get("date",""))}</td><td>{e(x.get("time",""))}</td></tr>' for x in evs)
    upcoming_html=('<div class="card" style="margin-top:14px"><div class="section-title"><h3>Upcoming Events</h3><span class="pill">'+str(len(DEMO.get('upcoming_events',[])))+' scheduled</span></div><div class="tw"><table><tr><th>Event</th><th>Venue</th><th>Date</th><th>Time</th></tr>'+evrows+'</table></div></div>') if evs else ''
    gpo_live=load_gpo_costs();gpo_years=gpo_live.get('years',{});gpo_current=gpo_years.get('2026/27',{});gpo_total=float(gpo_current.get('total',0) or 0)
-   gender=DEMO.get('juvenile_gender',{}) or {};boys=int(gender.get('Boys',0) or 0);girls=int(gender.get('Girls',0) or 0);gender_total=boys+girls;boys_pct=round(boys*100/gender_total) if gender_total else 0;girls_pct=100-boys_pct if gender_total else 0
-   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><div class="card kpi"><span class="metric-icon">B/G</span><div class="stat">{boys} / {girls}</div><b>Juvenile Boys v Girls</b><small>Boys {boys_pct}% · Girls {girls_pct}%</small></div><a href="/members/non-playing" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>Tap to view members</small></a><a href="/members/ladies" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">L</span><div class="stat">{ladies_members}</div><b>Senior Adult Ladies Members</b><small>Tap to view members</small></a><a href="/members/mens" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">M</span><div class="stat">{mens_members}</div><b>Senior Adult Mens Members</b><small>Tap to view members</small></a><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div><a href="/paid-membership" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">%</span><div class="stat">Paid</div><b>Paid Membership</b><small>Payment charts and unpaid member lists</small></a><a href="/gpo-costs" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">€</span><div class="stat">€{gpo_total:,.0f}</div><b>GPO Coaching Cost</b><small>2026/27 to date · Tap to view</small></a></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
+   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><a href="/members/non-playing" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>Tap to view members</small></a><a href="/members/ladies" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">L</span><div class="stat">{ladies_members}</div><b>Senior Adult Ladies Members</b><small>Tap to view members</small></a><a href="/members/mens" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">M</span><div class="stat">{mens_members}</div><b>Senior Adult Mens Members</b><small>Tap to view members</small></a><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div><a href="/gpo-costs" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">€</span><div class="stat">€{gpo_total:,.0f}</div><b>GPO Coaching Cost</b><small>2026/27 to date · Tap to view</small></a></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
   if path=='/today':
    d=q.get('date',[date.today().isoformat()])[0];w,a=self.vis(u);con='and' if 'where' in w else 'where';r=c.execute('select * from sessions '+w+con+' date=? order by start',a+[d]).fetchall();c.close();b=f'<div class="hero"><div><div class="eyebrow">Schools programme</div><h2>Selected Day</h2></div></div><form class="card"><label>Date</label><div class="row"><input type="date" name="date" value="{e(d)}"><button>Show date</button></div></form>'+(''.join(card(x,True) for x in r) if r else '<div class="card">No coaching scheduled for this date.</div>');return self.out(page('Schools Schedule',b,u))
   if path=='/gpo-costs':
@@ -1199,24 +1058,20 @@ class H(BaseHTTPRequestHandler):
   if path=='/session':
    s=c.execute('select * from sessions where id=?',(q.get('id',[''])[0],)).fetchone();c.close()
    if not s:return self.out(page('Not found','<div class="card">Session not found.</div>',u),404)
-   opts=''.join('<option'+(' selected' if s['actual_status']==x else '')+'>'+x+'</option>' for x in ['Scheduled','Completed','Cancelled','School Closed','Rescheduled','Coach Sick/Out']);b=card(s,True)+f'''<div class="card"><form method="post"><input type="hidden" name="id" value="{e(s['id'])}"><label>Status</label><select name="status">{opts}</select><label>Attendance / children coached</label><input type="number" min="0" name="attendance" value="{e(s['attendance'])}"><label>Session notes</label><textarea name="notes" rows="5">{e(s['notes'])}</textarea><div class="actions"><button>Save session record</button></div></form></div>''';return self.out(page('Session',b,u))
+   opts=''.join('<option'+(' selected' if s['actual_status']==x else '')+'>'+x+'</option>' for x in ['Scheduled','Completed','Cancelled','School Closed','Rescheduled']);b=card(s,True)+f'''<div class="card"><form method="post"><input type="hidden" name="id" value="{e(s['id'])}"><label>Status</label><select name="status">{opts}</select><label>Attendance / children coached</label><input type="number" min="0" name="attendance" value="{e(s['attendance'])}"><label>Session notes</label><textarea name="notes" rows="5">{e(s['notes'])}</textarea><div class="actions"><button>Save session record</button></div></form></div>''';return self.out(page('Session',b,u))
   if path=='/demographics':
    c.close();years=sorted((int(y) for y in DEMO.get('growth',{}) if str(y).isdigit()));latest_year=years[-1] if years else datetime.now().year;prev_year=years[-2] if len(years)>1 else latest_year-1;total=DEMO.get('growth',{}).get(str(latest_year),sum(DEMO.get('age_totals',{}).values()));prev=DEMO.get('growth',{}).get(str(prev_year),0);growthpct=round((total-prev)*100/prev) if prev else 0;games=sum(DEMO.get('games',{}).values())
    def bars(data):
-    mx=max(1,max([int(v) for v in data.values()] or [0]));return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
+    mx=max([int(v) for v in data.values()] or [1]);return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
    age=dict(sorted(DEMO['age_totals'].items(),key=lambda x:int(x[0][1:])))
    agelinks=''.join(f'<a class="chartlink" href="/demographics/age?group={e(k)}"><div class="card"><h3>{e(k)}</h3><div class="stat">{int(v)}</div><div class="muted">players · tap for catchment & schools</div></div></a>' for k,v in age.items())
-   b=f'''<div class="eyebrow">Club profile</div><h2>Club Demographics</h2><p class="muted">Eastern Gaels player profile · {latest_year}</p><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Players</b><small>{latest_year} club population</small></div><div class="card kpi"><div class="stat">+{growthpct}%</div><b>Year-on-year growth</b><small>{prev} players in {prev_year}</small></div><div class="card kpi"><div class="stat">{len(DEMO['age_totals'])}</div><b>Age groups</b><small>U5 through U14</small></div><div class="card kpi"><div class="stat">{games}</div><b>Games played</b><small>recorded in source workbook</small></div></div><div class="grid2"><div class="card chart-card"><h3>Membership growth</h3>{svg_line_area(DEMO['growth'])}</div><div class="card chart-card"><h3>Players by age group</h3>{svg_bar_chart(age)}</div></div><div class="grid2"><div class="card chart-card"><h3>Where our players live</h3>{donut_chart(DEMO['catchment'],subtitle='players')}</div><div class="card chart-card"><h3>Schools represented</h3>{hbar_chart(DEMO['school_totals'])}</div></div><div class="card chart-card"><h3>Games played by team</h3>{svg_bar_chart(DEMO['games'])}</div><h3>Age-group detail</h3><div class="grid">{agelinks}</div>''';return self.out(page('Club Demographics',b,u))
+   b=f'''<div class="eyebrow">Club profile</div><h2>Club Demographics</h2><p class="muted">Eastern Gaels player profile · {latest_year}</p><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Players</b><small>{latest_year} club population</small></div><div class="card kpi"><div class="stat">+{growthpct}%</div><b>Year-on-year growth</b><small>{prev} players in {prev_year}</small></div><div class="card kpi"><div class="stat">{len(DEMO['age_totals'])}</div><b>Age groups</b><small>U5 through U12</small></div><div class="card kpi"><div class="stat">{games}</div><b>Games played</b><small>recorded in source workbook</small></div></div><div class="grid2"><div class="card chart-card"><h3>Membership growth</h3>{svg_line_area(DEMO['growth'])}</div><div class="card chart-card"><h3>Players by age group</h3>{svg_bar_chart(age)}</div></div><div class="grid2"><div class="card chart-card"><h3>Where our players live</h3>{donut_chart(DEMO['catchment'],subtitle='players')}</div><div class="card chart-card"><h3>Schools represented</h3>{hbar_chart(DEMO['school_totals'])}</div></div><div class="card chart-card"><h3>Games played by team</h3>{svg_bar_chart(DEMO['games'])}</div><h3>Age-group detail</h3><div class="grid">{agelinks}</div>''';return self.out(page('Club Demographics',b,u))
   if path=='/demographics/age':
    c.close();g=q.get('group',[''])[0].upper()
    if g not in DEMO['age_totals']:return self.red('/demographics')
    def bars2(data):
-    if not data:
-     return '<p class="muted">No verified figures available.</p>'
-    mx=max(1,max([int(v) for v in data.values()] or [0]))
-    return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
-   players=DEMO.get('players_by_age',{}).get(g,[])
-   prows=''.join(f'<tr><td>{e(x.get("name",""))}</td><td>{e(x.get("school",""))}</td></tr>' for x in players);plist=(f'<div class="card"><h3>{e(g)} Players</h3><p class="muted">{len(players)} player names imported. Only player name and school are stored/displayed.</p><div class="tw"><table><tr><th>Player Name</th><th>School</th></tr>{prows}</table></div></div>' if players else '<div class="card"><h3>Players</h3><p class="muted">No player-name list has been imported for this age group yet.</p></div>');total=int(DEMO['age_totals'][g]);catchment_warning='<p class="muted">Workbook catchment total differs from player count.</p>' if sum(DEMO.get('age_areas',{}).get(g,{}).values()) != total else '';b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div>{plist}<div class="grid"><div class="card"><h3>Residential catchment</h3>{catchment_warning}{bars2(DEMO.get('age_areas',{}).get(g,{})) if DEMO.get('age_areas',{}).get(g,{}) else '<p class="muted">No catchment breakdown in workbook.</p>'}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO.get('age_schools',{}).get(g,{}))}</div></div><div class="card"><p class="muted">School figures are calculated from the imported player list; missing schools are shown as Not recorded. Residential catchment figures are taken from the workbook summary; their totals may differ from the current player list.</p></div>''';return self.out(page(g+' Demographics',b,u))
+    mx=max([int(v) for v in data.values()] or [1]);return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
+   players=DEMO.get('players_by_age',{}).get(g,[]);prows=''.join(f'<tr><td>{e(x.get("name",""))}</td><td>{e(x.get("school",""))}</td></tr>' for x in players);plist=(f'<div class="card"><h3>{e(g)} Players</h3><p class="muted">{len(players)} player names imported. Only player name and school are stored/displayed.</p><div class="tw"><table><tr><th>Player Name</th><th>School</th></tr>{prows}</table></div></div>' if players else '<div class="card"><h3>Players</h3><p class="muted">No player-name list has been imported for this age group yet.</p></div>');total=int(DEMO['age_totals'][g]);b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div>{plist}<div class="grid"><div class="card"><h3>Residential catchment</h3>{bars2(DEMO['age_areas'][g])}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO['age_schools'][g])}</div></div><div class="card"><p class="muted">Figures are imported from the updated Eastern Gaels demographics workbook. Zero-value categories are retained so the source structure remains visible.</p></div>''';return self.out(page(g+' Demographics',b,u))
   if path=='/coaching-team':
    c.close();coaches=list(COACHING.get('coaches',{}).values());teams=COACHING.get('teams',{});buckets={'expired':0,'urgent':0,'warning':0,'unknown':0,'unknown_expiry':0,'not_vetted':0,'valid':0}
    for x in coaches:buckets[expiry_bucket(x)[0]]+=1
@@ -1229,11 +1084,35 @@ class H(BaseHTTPRequestHandler):
    b=f'''<div class="eyebrow">People & teams</div><h2>Coaches & Teams</h2><p class="muted">Garda Vetting and Safeguarding are tracked independently. Vetting expiry warnings apply only when Garda Vetted is Yes.</p><div class="grid"><div class="card kpi"><div class="stat">{len(coaches)}</div><b>Total coaches</b></div><div class="card kpi"><div class="stat">{vetted}</div><b>Garda vetted</b><small>of {len(coaches)}</small></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding completed</b><small>of {len(coaches)}</small></div><div class="card kpi"><div class="stat">{qual}</div><b>Qualified coaches</b></div><div class="card kpi"><div class="stat">{buckets['expired']+buckets['urgent']}</div><b>Vetting expiry action</b><small>expired / within 90 days</small></div></div><div class="card"><h3>Coach compliance</h3><div class="tw"><table><tr><th>Coach</th><th>Garda Vetted</th><th>Vetting Expiry</th><th>Safeguarding</th><th>Qualification</th><th>Teams</th></tr>{rows}</table></div></div><h3>Coaching pool</h3><div class="grid">{teamcards}</div>'''
    return self.out(page('Coaching Team',b,u))
   if path=='/compliance':
-   coaches=list(COACHING.get('coaches',{}).values());total=len(coaches);vetted=sum(str(x.get('garda_vetted','')).upper()=='YES' for x in coaches);safe=sum(str(x.get('safeguarding','')).upper()=='YES' for x in coaches);action=sum(expiry_bucket(x)[0] in ('expired','urgent') for x in coaches);rows='';drive_connected=bool(load_google_oauth_token().get('refresh_token'))
-   forms={r['coach_key']:dict(r) for r in c.execute('select * from garda_forms').fetchall()};c.close()
-   for x in sorted(coaches,key=lambda z:z.get('name','')):
-    bucket,days=expiry_bucket(x);exp=x.get('garda_expiry_text') or x.get('garda_expiry') or '-';raw_coach=x.get('name','');coach=e(raw_coach);form=forms.get(coach_key(raw_coach));form_status=(f'<span class="badge valid">✓ Uploaded</span> <a class="btn" href="{e(form.get("web_view_link"))}" target="_blank" rel="noopener noreferrer">View file ↗</a><br><small>Uploaded {e(form.get("uploaded_at","").replace("T"," "))}</small>' if form and form.get('web_view_link') else '<span class="badge unknown">Not uploaded</span>');rows+=f'<tr><td><b>{coach}</b></td><td>{e(x.get("garda_vetted","Unknown"))}</td><td><span class="badge {bucket}">{e(exp)}</span></td><td>{e(x.get("safeguarding","Unknown"))}</td><td><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">{form_status}</div><form method="post" action="/compliance/garda-upload" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input type="hidden" name="coach_name" value="{coach}"><input type="file" name="garda_file" accept=".pdf,.jpg,.jpeg,.png" required style="max-width:180px"><button type="submit">{"Replace" if form else "Upload"}</button></form></td></tr>'
-   b=f'''<div class="hero"><div><div class="eyebrow">Governance</div><h2>Compliance</h2><p>Garda Vetting and Safeguarding tracked independently.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{vetted}</div><b>Garda vetted</b><small>of {total} coaches</small></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding completed</b><small>of {total} coaches</small></div><div class="card kpi"><div class="stat">{action}</div><b>Expiry action</b><small>expired / within 90 days</small></div></div><div class="grid2"><div class="card chart-card"><h3>Overall compliance</h3>{donut_chart({"Garda vetted":vetted,"Garda outstanding":max(0,total-vetted),"Safeguarding":safe,"Safeguarding outstanding":max(0,total-safe)},center=str(round((vetted+safe)*100/(2*total)))+"%",subtitle="complete")}</div><div class="card"><h3>Coach compliance</h3><p class="muted">Upload Garda Vetting forms directly to the club's restricted Google Drive folder. PDF, JPG and PNG accepted.</p>{'<p><span class="badge valid">Google Drive connected</span></p>' if drive_connected else '<p><a class="btn" href="/google-oauth/start">Connect Google Drive</a></p>'}<div class="tw compliance-scroll" role="region" aria-label="Coach compliance table. Swipe left and right to see all columns." tabindex="0"><table><tr><th>Coach</th><th>Garda Vetted</th><th>Vetting Expiry</th><th>Safeguarding</th><th>Vetting Form</th></tr>{rows}</table></div></div></div>''';return self.out(page('Compliance',b,u))
+   c.close()
+   coaches=sorted(COACHING.get('coaches',{}).items(),key=lambda kv:kv[1].get('name',''))
+   records=safeguarding_records();total=len(coaches)
+   vetted=sum(str(x.get('garda_vetted','')).upper()=='YES' for _,x in coaches)
+   safe=sum(str(x.get('safeguarding','')).upper()=='YES' for _,x in coaches)
+   counts={'valid':0,'warning':0,'urgent':0,'expired':0,'unknown':0};rows=''
+   for key,x in coaches:
+    r=records.get(key,{})
+    state,days=safeguarding_state(r);counts[state]+=1
+    desc=('Expired '+str(-days)+' days ago' if days is not None and days<0 else str(days)+' days left' if days is not None else 'Date not recorded')
+    document=f'<a href="/compliance/safeguarding/file?coach={quote(key)}">View file</a>' if r.get('file') else 'Not uploaded'
+    rows+=f"""<tr><td><b>{e(x.get('name'))}</b></td><td>{e(x.get('garda_vetted','Unknown'))}</td><td>{e(x.get('garda_expiry_text') or x.get('garda_expiry') or '-')}</td><td>{e(x.get('safeguarding','Unknown'))}</td><td>{e(r.get('expiry') or 'Not recorded')}</td><td><span class="badge {state}">{e(desc)}</span></td><td>{document}</td><td><form method="post" action="/compliance/safeguarding/save" enctype="multipart/form-data"><input type="hidden" name="coach" value="{e(key)}"><label>Expiry date<input type="date" name="expiry" value="{e(r.get('expiry',''))}" required></label><label>Certificate (PDF/JPG/PNG)<input type="file" name="certificate" accept=".pdf,.jpg,.jpeg,.png"></label><button type="submit">Save</button></form></td></tr>"""
+   alert=counts['warning']+counts['urgent']+counts['expired']
+   b=f"""<div class="hero"><div><div class="eyebrow">Governance</div><h2>Compliance</h2><p>Safeguarding renewal alerts appear here only. Enter the expiry date shown on each coach's record; no expiry date is assumed.</p></div></div>
+   <div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Coaches</b></div><div class="card kpi"><div class="stat">{vetted}</div><b>Garda vetted</b></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding marked complete</b></div><div class="card kpi"><div class="stat">{alert}</div><b>Safeguarding expiry alerts</b><small>Expired or due within 90 days</small></div><div class="card kpi"><div class="stat">{counts['unknown']}</div><b>Missing expiry dates</b></div></div>
+   <div class="card"><h3>Safeguarding 90-day alerts</h3><p>{counts['expired']} expired · {counts['urgent']} due in 0–30 days · {counts['warning']} due in 31–90 days · {counts['valid']} valid beyond 90 days</p><p class="muted">Expiry dates and certificates are stored separately from workbook imports. Uploaded files should be accessible only to authorised dashboard users.</p></div>
+   <div class="card"><h3>Coach safeguarding records and certificate uploads</h3><div class="tw"><table><tr><th>Coach</th><th>Garda Vetted</th><th>Garda Expiry</th><th>Safeguarding</th><th>Safeguarding Expiry</th><th>Alert</th><th>Certificate</th><th>Update record</th></tr>{rows}</table></div></div>"""
+   return self.out(page('Compliance',b,u))
+  if path=='/compliance/safeguarding/file':
+   c.close();key=q.get('coach',[''])[0];u=self.need()
+   if not u:return
+   r=safeguarding_records().get(key,{})
+   fname=r.get('file','')
+   if not re.fullmatch(r'[a-f0-9]{32}\\.(pdf|jpg|jpeg|png)',fname):return self.send_error(404)
+   try:
+    with open(os.path.join(SAFE_DOCS,fname),'rb') as f:data=f.read()
+   except OSError:return self.send_error(404)
+   mime='application/pdf' if fname.endswith('.pdf') else 'image/png' if fname.endswith('.png') else 'image/jpeg'
+   self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Disposition','attachment; filename="safeguarding-certificate.'+fname.rsplit('.',1)[-1]+'"');self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
   if path=='/courses':
    c.close();coaches=list(COACHING.get('coaches',{}).values());quals={}
    for x in coaches:qv=str(x.get('qualification','Unknown') or 'Unknown').strip();quals[qv]=quals.get(qv,0)+1
@@ -1242,46 +1121,19 @@ class H(BaseHTTPRequestHandler):
   if path=='/games':
    c.close();games=DEMO.get('games',{});total=sum(int(v) for v in games.values());mx=max([int(v) for v in games.values()] or [1]);bars=''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in games.items())
    b=f'''<div class="hero"><div><div class="eyebrow">Playing programme</div><h2>Games Played</h2><p>Games activity by team / age group.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Total games</b><small>Recorded in source workbook</small></div><div class="card kpi"><div class="stat">{len(games)}</div><b>Teams reporting</b></div></div><div class="card chart-card"><h3>Games by team</h3>{svg_bar_chart(games,260)}</div>''';return self.out(page('Games Played',b,u))
-  if path=='/paid-membership':
-   c.close()
-   juvenile=DEMO.get('players_by_age',{})
-   adults=DEMO.get('adult_payment',{})
-   groups=[(g,juvenile.get(g,[])) for g in sorted(DEMO.get('age_totals',{}),key=lambda v:int(v[1:]))]
-   groups.extend((name,records) for name,records in adults.items())
-   members=[member for _,records in groups for member in records]
-   paid=sum(member.get('paid')=='YES' for member in members)
-   unpaid=sum(member.get('paid')=='NO' for member in members)
-   unknown=len(members)-paid-unpaid
-   known=paid+unpaid
-   paid_pct=round(100*paid/known,1) if known else 0
-   unpaid_pct=round(100*unpaid/known,1) if known else 0
-   overview=pie_chart({'Paid':paid,'Not paid':unpaid}) if known else '<p class="muted">No recorded YES/NO statuses.</p>'
-   blocks=''.join('<h3>'+e(name)+'</h3>'+payment_section(records,name+' payments') for name,records in groups)
-   b=f'''<div class="actions"><a class="btn secondary" href="/">← Dashboard</a></div><h2>Paid Membership</h2><p class="muted">2026 payment status across juvenile, senior and non-playing membership.</p><div class="grid"><div class="card kpi"><div class="stat">{paid_pct}%</div><b>Paid</b><small>{paid} members</small></div><div class="card kpi"><div class="stat">{unpaid_pct}%</div><b>Not paid</b><small>{unpaid} members</small></div><div class="card kpi"><div class="stat">{unknown}</div><b>Not recorded</b><small>Excluded from paid/unpaid percentages</small></div></div><div class="card chart-card"><h3>Overall paid vs not paid</h3>{overview}<p class="muted">Percentages are based on {known} members with YES/NO recorded, out of {len(members)} imported member records. Members with blank or unexpected statuses are shown separately.</p></div>{blocks}'''
-   return self.out(page('Paid Membership',b,u))
   if path=='/membership':
    c.close();ages=dict(sorted(DEMO.get('age_totals',{}).items(),key=lambda x:int(x[0][1:])));years=sorted((int(y) for y in DEMO.get('growth',{}) if str(y).isdigit()));latest=years[-1] if years else datetime.now().year;total=int(DEMO.get('growth',{}).get(str(latest),sum(ages.values())));cards=''.join(f'<a class="chartlink" href="/demographics/age?group={e(k)}"><div class="card kpi"><div class="stat">{int(v)}</div><b>{e(k)}</b><small>View player names & school</small></div></a>' for k,v in ages.items())
-   adult_sections=''.join('<h3>'+e(category)+'</h3>'+payment_section(records) for category,records in DEMO.get('adult_payment',{}).items())
-   b=f'''<div class="hero"><div><div class="eyebrow">Club population</div><h2>Membership</h2><p>Age-group membership with player-name drill-downs.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Total members</b><small>{latest}</small></div><div class="card kpi"><div class="stat">{len(ages)}</div><b>Age groups</b></div></div><div class="section-title"><h3>Members by age group</h3><span class="pill">Tap an age group</span></div><div class="grid">{cards}</div><p><a class="btn" href="/paid-membership">View Paid Membership →</a></p>''';return self.out(page('Membership',b,u))
+   b=f'''<div class="hero"><div><div class="eyebrow">Club population</div><h2>Membership</h2><p>Age-group membership with player-name drill-downs.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Total members</b><small>{latest}</small></div><div class="card kpi"><div class="stat">{len(ages)}</div><b>Age groups</b></div></div><div class="section-title"><h3>Members by age group</h3><span class="pill">Tap an age group</span></div><div class="grid">{cards}</div>''';return self.out(page('Membership',b,u))
   if path=='/reports':
    w,a=self.vis(u)
    ss=c.execute('select * from sessions '+w+' order by date,start',a).fetchall()
-   total=len(ss);done=sum(x['actual_status']=='Completed' for x in ss);cancelled=sum(x['actual_status']=='Cancelled' for x in ss);closed=sum(x['actual_status']=='School Closed' for x in ss);scheduled=sum(x['actual_status']=='Scheduled' for x in ss);sick_out=sum(x['actual_status']=='Coach Sick/Out' for x in ss);attendance=sum((x['attendance'] or 0) for x in ss if x['actual_status']=='Completed')
-   # Coaching hours must come ONLY from sessions whose live dashboard
-   # status is Completed.  Use total_seconds() so an invalid end time that
-   # is earlier than the start time cannot wrap around and add ~24 hours.
-   completed_sessions=[x for x in ss if str(x['actual_status'] or '').strip()=='Completed']
+   total=len(ss);done=sum(x['actual_status']=='Completed' for x in ss);cancelled=sum(x['actual_status']=='Cancelled' for x in ss);closed=sum(x['actual_status']=='School Closed' for x in ss);scheduled=sum(x['actual_status']=='Scheduled' for x in ss);attendance=sum((x['attendance'] or 0) for x in ss if x['actual_status']=='Completed')
    hours=0.0
-   for x in completed_sessions:
-    if x['start'] and x['end']:
+   for x in ss:
+    if x['actual_status']=='Completed' and x['start'] and x['end']:
      try:
-      st=datetime.strptime(str(x['start']).strip(),'%H:%M')
-      en=datetime.strptime(str(x['end']).strip(),'%H:%M')
-      duration=(en-st).total_seconds()/3600
-      if duration > 0:
-       hours+=duration
-     except (TypeError,ValueError):
-      pass
+      st=datetime.strptime(x['start'],'%H:%M');en=datetime.strptime(x['end'],'%H:%M');hours+=max(0,(en-st).seconds/3600)
+     except:pass
    pct=round(done*100/total) if total else 0
    byschool={};bycoach={};bymonth={}
    for x in ss:
@@ -1297,12 +1149,11 @@ class H(BaseHTTPRequestHandler):
    monthbars=''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{v*100/maxmonth:.0f}%"></div></div><b>{v}</b></div>' for k,v in bymonth.items()) or '<p class="muted">No completed sessions yet.</p>'
    schoolcards=''.join(f'<a class="chartlink" href="/reports/detail?school={e(k)}"><div class="card"><h3>{e(k)}</h3><div class="stat">{v[0]} / {v[1]}</div><div class="muted">sessions completed · {round(v[0]*100/v[1]) if v[1] else 0}%</div><div class="progress"><span style="width:{v[0]*100/v[1] if v[1] else 0:.0f}%"></span></div></div></a>' for k,v in sorted(byschool.items()))
    d1=pct;d2=min(100,d1+(cancelled*100/total if total else 0));d3=min(100,d2+(closed*100/total if total else 0))
-   c.close();b=f'''<h2>Coaching Dashboard</h2><p class="muted">Live summary of the 2026–2027 schools coaching programme.</p><div class="grid"><div class="card kpi"><div class="stat">{done}</div><b>Sessions completed</b><small>of {total} planned</small></div><div class="card kpi"><div class="stat">{pct}%</div><b>Programme complete</b><small>{scheduled} still scheduled</small></div><div class="card kpi"><div class="stat">{hours:.1f}</div><b>Coaching hours</b><small>completed sessions</small></div><div class="card kpi"><div class="stat">{sick_out}</div><b>Coach Sick/Out</b><small>sessions affected</small></div><div class="card kpi"><div class="stat">{attendance}</div><b>Recorded attendance</b><small>total contacts entered</small></div></div><div class="grid"><div class="card"><h3>Completed sessions by month</h3>{monthbars}</div><div class="card"><h3>Session status</h3><div class="donut" style="--done:{d1}%;--cancel:{d2}%;--closed:{d3}%"></div><div class="legend"><span><i class="dot"></i>Completed {done}</span><span>Cancelled {cancelled}</span><span>School closed {closed}</span><span>Coach Sick/Out {sick_out}</span><span>Scheduled {scheduled}</span></div></div></div><div class="grid"><div class="card"><h3>Completed by school</h3>{schoolbars}</div><div class="card"><h3>Completed by coach</h3>{coachbars}</div></div><h3>School progress</h3><div class="grid">{schoolcards}</div><div class="card"><h3>Coach Sick/Out sessions</h3><p class="muted">{sick_out} session(s) marked Coach Sick/Out.</p><div class="actions"><a class="btn secondary" href="/reports/detail?status=Coach%20Sick%2FOut">View affected sessions</a></div></div><div class="actions"><a class="btn" href="/export.csv">Download CSV report</a></div>''';return self.out(page('Dashboard',b,u))
+   c.close();b=f'''<h2>Coaching Dashboard</h2><p class="muted">Live summary of the 2026–2027 schools coaching programme.</p><div class="grid"><div class="card kpi"><div class="stat">{done}</div><b>Sessions completed</b><small>of {total} planned</small></div><div class="card kpi"><div class="stat">{pct}%</div><b>Programme complete</b><small>{scheduled} still scheduled</small></div><div class="card kpi"><div class="stat">{hours:.1f}</div><b>Coaching hours</b><small>completed sessions</small></div><div class="card kpi"><div class="stat">{attendance}</div><b>Recorded attendance</b><small>total contacts entered</small></div></div><div class="grid"><div class="card"><h3>Completed sessions by month</h3>{monthbars}</div><div class="card"><h3>Session status</h3><div class="donut" style="--done:{d1}%;--cancel:{d2}%;--closed:{d3}%"></div><div class="legend"><span><i class="dot"></i>Completed {done}</span><span>Cancelled {cancelled}</span><span>School closed {closed}</span><span>Scheduled {scheduled}</span></div></div></div><div class="grid"><div class="card"><h3>Completed by school</h3>{schoolbars}</div><div class="card"><h3>Completed by coach</h3>{coachbars}</div></div><h3>School progress</h3><div class="grid">{schoolcards}</div><div class="actions"><a class="btn" href="/export.csv">Download CSV report</a></div>''';return self.out(page('Dashboard',b,u))
   if path=='/reports/detail':
-   school=q.get('school',[''])[0];coach=q.get('coach',[''])[0];status=q.get('status',[''])[0];w,a=self.vis(u);con='and' if 'where' in w else 'where';extra='';vals=list(a);title='Completed sessions'
+   school=q.get('school',[''])[0];coach=q.get('coach',[''])[0];w,a=self.vis(u);con='and' if 'where' in w else 'where';extra='';vals=list(a);title='Completed sessions'
    if school:extra=' school=?';vals.append(school);title=school
    elif coach:extra=' coach=?';vals.append(coach);title=coach
-   elif status:extra=' actual_status=?';vals.append(status);title=status+' sessions'
    else:extra=" actual_status='Completed'"
    r=c.execute('select * from sessions '+w+con+extra+' order by date,start',vals).fetchall();c.close();rows=''.join(f'<tr><td>{fd(x["date"])}</td><td>{e(x["school"])}</td><td>{e(x["coach"])}</td><td>{e(x["class_group"])}</td><td><span class="badge {e(x["actual_status"])}">{e(x["actual_status"])}</span></td><td>{e(x["attendance"])}</td></tr>' for x in r);return self.out(page('Report detail',f'<h2>{e(title)}</h2><p class="muted">{len(r)} sessions</p><div class="tw"><table><tr><th>Date</th><th>School</th><th>Coach</th><th>Class</th><th>Status</th><th>Attendance</th></tr>{rows}</table></div><div class="actions"><a class="btn secondary" href="/reports">Back to dashboard</a></div>',u))
   if path=='/admin':
@@ -1317,7 +1168,7 @@ class H(BaseHTTPRequestHandler):
    c.close();pending=os.path.join(DATA_DIR,'demographics_pending.json')
    if not os.path.exists(pending):return self.red('/admin')
    nd=json.load(open(pending,encoding='utf8'));old=load_demo();latest=lambda d:max((int(y) for y in d.get('growth',{}) if str(y).isdigit()),default=2026);ny=latest(nd);oy=latest(old);nt=nd.get('growth',{}).get(str(ny),sum(nd.get('age_totals',{}).values()));ot=old.get('growth',{}).get(str(oy),sum(old.get('age_totals',{}).values()));
-   changes=''.join(f'<tr><td>{e(g)}</td><td>{old.get("age_totals",{}).get(g,0)}</td><td>{nd.get("age_totals",{}).get(g,0)}</td><td>{nd.get("age_totals",{}).get(g,0)-old.get("age_totals",{}).get(g,0):+d}</td></tr>' for g in ['U5','U6','U7','U8','U9','U10','U11','U12','U13','U14'])
+   changes=''.join(f'<tr><td>{e(g)}</td><td>{old.get("age_totals",{}).get(g,0)}</td><td>{nd.get("age_totals",{}).get(g,0)}</td><td>{nd.get("age_totals",{}).get(g,0)-old.get("age_totals",{}).get(g,0):+d}</td></tr>' for g in ['U5','U6','U7','U8','U9','U10','U11','U12'])
    warns=''.join(f'<li>{e(x)}</li>' for x in nd.get('warnings',[])) or '<li>No validation warnings.</li>'
    b=f'''<h2>Preview demographics import</h2><div class="grid"><div class="card kpi"><div class="stat">{ot}</div><b>Current players</b><small>{oy}</small></div><div class="card kpi"><div class="stat">{nt}</div><b>Uploaded players</b><small>{ny}</small></div><div class="card kpi"><div class="stat">{nt-ot:+d}</div><b>Change</b><small>players</small></div></div><div class="card"><h3>Age-group changes</h3><div class="tw"><table><tr><th>Age</th><th>Current</th><th>Uploaded</th><th>Change</th></tr>{changes}</table></div></div><div class="card"><h3>Validation</h3><ul>{warns}</ul><p class="muted">Warnings do not block import; review them before confirming.</p></div><div class="card"><form method="post" action="/admin/demographics/confirm"><div class="actions"><button>Confirm import</button><a class="btn secondary" href="/admin">Cancel</a></div></form></div>'''
    return self.out(page('Preview demographics',b,u))
@@ -1331,19 +1182,40 @@ class H(BaseHTTPRequestHandler):
  def do_POST(self):
   global DEMO,COACHING
   p=urlparse(self.path).path
-  if p=='/compliance/garda-upload':
+  if p=='/compliance/safeguarding/save':
    u=self.need()
-   if not u:return self.out('Forbidden',403)
-   name,data,coach=self.upload_file_with_field('garda_file','coach_name')
-   allowed=('.pdf','.jpg','.jpeg','.png')
-   if not data or not name or not name.lower().endswith(allowed):return self.out(page('Upload error','<div class="card"><h2>Please choose a PDF, JPG or PNG Garda Vetting form.</h2><a class="btn" href="/compliance">Back</a></div>',u),400)
-   if len(data)>15*1024*1024:return self.out(page('Upload error','<div class="card"><h2>File is too large.</h2><p>Maximum size is 15 MB.</p><a class="btn" href="/compliance">Back</a></div>',u),400)
-   if coach_key(coach) not in COACHING.get('coaches',{}):return self.out(page('Upload error','<div class="card"><h2>Coach was not recognised.</h2><a class="btn" href="/compliance">Back</a></div>',u),400)
-   try:
-    uploaded=google_upload_garda_form(name,data,coach)
-    file_id=str(uploaded.get('id',''));drive_name=str(uploaded.get('name',''));view_link=str(uploaded.get('webViewLink','')) or ('https://drive.google.com/file/d/'+file_id+'/view' if file_id else '')
-    c=dbc();c.execute('insert into garda_forms(coach_key,coach_name,drive_file_id,drive_name,web_view_link,uploaded_at) values(?,?,?,?,?,?) on conflict(coach_key) do update set coach_name=excluded.coach_name,drive_file_id=excluded.drive_file_id,drive_name=excluded.drive_name,web_view_link=excluded.web_view_link,uploaded_at=excluded.uploaded_at',(coach_key(coach),coach,file_id,drive_name,view_link,datetime.now().isoformat(timespec='seconds')));c.commit();c.close()
-   except Exception as ex:return self.out(page('Upload error',f'<div class="card"><h2>Could not upload Garda Vetting form</h2><p>{e(ex)}</p><a class="btn" href="/compliance">Back</a></div>',u),500)
+   if not u:return
+   if u['role']!='admin':return self.send_error(403)
+   n=int(self.headers.get('Content-Length','0'))
+   if n>6*1024*1024:return self.send_error(413)
+   import email
+   from email.parser import BytesParser
+   raw=self.rfile.read(n);ct=self.headers.get('Content-Type','')
+   msg=BytesParser().parsebytes(b'Content-Type: '+ct.encode()+b'\r\nMIME-Version: 1.0\r\n\r\n'+raw)
+   parts={p.get_param('name',header='content-disposition'):p for p in msg.walk() if p.get_content_disposition()=='form-data'}
+   key=(parts.get('coach').get_payload(decode=True).decode('utf-8') if parts.get('coach') else '').strip()
+   expiry=(parts.get('expiry').get_payload(decode=True).decode('utf-8') if parts.get('expiry') else '').strip()
+   if key not in COACHING.get('coaches',{}):return self.send_error(400)
+   try:date.fromisoformat(expiry)
+   except ValueError:return self.send_error(400)
+   records=safeguarding_records();record=records.get(key,{})
+   uploaded=parts.get('certificate')
+   if uploaded and uploaded.get_filename():
+    data=uploaded.get_payload(decode=True) or b''
+    ext=os.path.splitext(uploaded.get_filename().lower())[1]
+    valid=ext in ('.pdf','.png','.jpg','.jpeg') and len(data)<=5*1024*1024 and len(data)>0
+    valid=valid and (data.startswith(b'%PDF-') if ext=='.pdf' else data.startswith(b'\x89PNG\r\n\x1a\n') if ext=='.png' else data.startswith(b'\xff\xd8\xff'))
+    if not valid:return self.send_error(400,'Invalid certificate format or size')
+    os.makedirs(SAFE_DOCS,mode=0o700,exist_ok=True)
+    filename=secrets.token_hex(16)+ext
+    with open(os.path.join(SAFE_DOCS,filename),'wb') as f:f.write(data)
+    os.chmod(os.path.join(SAFE_DOCS,filename),0o600)
+    old=record.get('file')
+    record['file']=filename
+    if old and re.fullmatch(r'[a-f0-9]{32}\.(pdf|jpg|jpeg|png)',old):
+     try:os.remove(os.path.join(SAFE_DOCS,old))
+     except OSError:pass
+   record['expiry']=expiry;records[key]=record;safeguarding_save(records)
    return self.red('/compliance')
   if p=='/admin/coaching-team/upload':
    u=self.need()
