@@ -1194,6 +1194,9 @@ class H(BaseHTTPRequestHandler):
    games_chart=svg_bar_chart(dict(sorted(DEMO.get('games',{}).items(),key=lambda x:str(x[0]))),230)
    juveniles=sum(v for k,v in ages.items() if str(k).upper().startswith('U'));adults=int(DEMO.get('senior_adult_non_playing_count',0))
    gender=DEMO.get('juvenile_gender',{}) or {};boys=int(gender.get('Boys',0) or 0);girls=int(gender.get('Girls',0) or 0);gender_total=boys+girls;boys_pct=round(boys*100/gender_total) if gender_total else 0;girls_pct=100-boys_pct if gender_total else 0
+   # The headline juvenile tile uses the same authoritative Boys + Girls summary.
+   # Keep age-group breakdowns and all other membership calculations unchanged.
+   if gender_total:juveniles=gender_total
    evs=DEMO.get('upcoming_events',[])[:6]
    evrows=''.join(f'<tr><td><b>{e(x.get("event",""))}</b></td><td>{e(x.get("venue",""))}</td><td>{e(x.get("date",""))}</td><td>{e(x.get("time",""))}</td></tr>' for x in evs)
    upcoming_html=('<div class="card" style="margin-top:14px"><div class="section-title"><h3>Upcoming Events</h3><span class="pill">'+str(len(DEMO.get('upcoming_events',[])))+' scheduled</span></div><div class="tw"><table><tr><th>Event</th><th>Venue</th><th>Date</th><th>Time</th></tr>'+evrows+'</table></div></div>') if evs else ''
