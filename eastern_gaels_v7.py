@@ -51,23 +51,27 @@ def load_coaching():
 COACHING=load_coaching()
 # Safeguarding evidence is kept separately from imported coaching records, so
 # workbook refreshes cannot erase manually recorded certificate dates.
-SAFE_META=os.path.join(DATA_DIR,'safeguarding_records.json')
-SAFE_DOCS=os.path.join(DATA_DIR,'safeguarding_documents')
-def safeguarding_records():
+SAFE_META=os.path.join(DATA_DIR,'compliance_documents.json')
+SAFE_DOCS=os.path.join(DATA_DIR,'compliance_uploads')
+LEGACY_SAFE_META=os.path.join(DATA_DIR,'safeguarding_records.json')
+def compliance_records():
  try:
   with open(SAFE_META,encoding='utf-8') as f:return json.load(f)
- except (OSError,ValueError):return {}
-def safeguarding_state(record):
- raw=record.get('expiry','')
- try:d=date.fromisoformat(raw)
+ except (OSError,ValueError):
+  try:
+   with open(LEGACY_SAFE_META,encoding='utf-8') as f:
+    old=json.load(f)
+   return {k:{'safeguarding':v} for k,v in old.items()}
+  except (OSError,ValueError):return {}
+def compliance_state(expiry):
+ try:d=date.fromisoformat(expiry)
  except (TypeError,ValueError):return ('unknown',None)
  days=(d-date.today()).days
  return ('expired' if days<0 else 'urgent' if days<=30 else 'warning' if days<=90 else 'valid',days)
-def safeguarding_save(records):
+def compliance_save(records):
  tmp=SAFE_META+'.tmp'
  with open(tmp,'w',encoding='utf-8') as f:json.dump(records,f,indent=2)
  os.replace(tmp,SAFE_META)
-
 
 # Google Drive automatic source feeds.
 # Authentication is supplied through GOOGLE_SERVICE_ACCOUNT_JSON in the environment.
@@ -1039,7 +1043,8 @@ class H(BaseHTTPRequestHandler):
    evrows=''.join(f'<tr><td><b>{e(x.get("event",""))}</b></td><td>{e(x.get("venue",""))}</td><td>{e(x.get("date",""))}</td><td>{e(x.get("time",""))}</td></tr>' for x in evs)
    upcoming_html=('<div class="card" style="margin-top:14px"><div class="section-title"><h3>Upcoming Events</h3><span class="pill">'+str(len(DEMO.get('upcoming_events',[])))+' scheduled</span></div><div class="tw"><table><tr><th>Event</th><th>Venue</th><th>Date</th><th>Time</th></tr>'+evrows+'</table></div></div>') if evs else ''
    gpo_live=load_gpo_costs();gpo_years=gpo_live.get('years',{});gpo_current=gpo_years.get('2026/27',{});gpo_total=float(gpo_current.get('total',0) or 0)
-   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><a href="/members/non-playing" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>Tap to view members</small></a><a href="/members/ladies" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">L</span><div class="stat">{ladies_members}</div><b>Senior Adult Ladies Members</b><small>Tap to view members</small></a><a href="/members/mens" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">M</span><div class="stat">{mens_members}</div><b>Senior Adult Mens Members</b><small>Tap to view members</small></a><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div><a href="/gpo-costs" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">€</span><div class="stat">€{gpo_total:,.0f}</div><b>GPO Coaching Cost</b><small>2026/27 to date · Tap to view</small></a></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
+   paid_visits=sum(len(v.get('entries',[])) for v in gpo_years.values())
+   b=f'''<div class="overview-title"><div><small>CLUB DASHBOARD</small><h2>Club Overview</h2></div><span>Live from latest club workbook</span></div><div class="kpi-grid"><div class="card kpi"><span class="metric-icon">M</span><div class="stat">{members}</div><b>Total Members</b><small>Latest membership total</small></div><div class="card kpi"><span class="metric-icon">J</span><div class="stat">{juveniles}</div><b>Juvenile Members</b><small>Age-group membership</small></div><a href="/members/non-playing" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">A</span><div class="stat">{adults}</div><b>Senior Adult Non-Playing Members</b><small>Tap to view members</small></a><a href="/members/ladies" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">L</span><div class="stat">{ladies_members}</div><b>Senior Adult Ladies Members</b><small>Tap to view members</small></a><a href="/members/mens" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">M</span><div class="stat">{mens_members}</div><b>Senior Adult Mens Members</b><small>Tap to view members</small></a><div class="card kpi"><span class="metric-icon">C</span><div class="stat">{len(coaches)}</div><b>Active Coaches</b><small>{qual} qualifications recorded</small></div><div class="card kpi"><span class="metric-icon">%</span><div class="stat">{compliance_rate}%</div><b>Compliance Rate</b><small>Vetting + safeguarding completion</small></div><a href="/gpo-costs" class="card kpi" style="text-decoration:none;color:inherit;cursor:pointer"><span class="metric-icon">€</span><div class="stat">€{gpo_total:,.0f}</div><b>GPO Coaching Cost</b><small>2026/27 to date · Tap to view</small></a><a href="/gpo-costs" class="card kpi" style="text-decoration:none;color:inherit"><span class="metric-icon">P</span><div class="stat">{paid_visits}</div><b>Paid Coaching Visits</b><small>Recorded GPO visits · Tap to view</small></a><a href="/gpo-costs" class="card kpi" style="text-decoration:none;color:inherit"><span class="metric-icon">G</span><div class="stat">€{gpo_total:,.0f}</div><b>GPO Coaching</b><small>2026/27 costs · Tap to view</small></a></div><div class="overview-charts"><div class="card"><div class="section-title"><h3>Juvenile Membership Growth</h3><span class="pill">+{gpct}% latest YoY</span></div>{growth_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Age Group Breakdown</h3><a href="/membership" class="pill">View</a></div>{age_chart}</div><div class="card"><div class="section-title"><h3>Juvenile Membership Catchment</h3></div>{catchment_chart}</div><div class="card"><div class="section-title"><h3>Compliance Status</h3><a href="/compliance" class="pill">View</a></div>{compliance_chart}</div><div class="card"><div class="section-title"><h3>Coach Qualifications</h3><a href="/courses" class="pill">View</a></div>{qual_chart}</div><div class="card"><div class="section-title"><h3>Games Played</h3><a href="/games" class="pill">View</a></div>{games_chart}</div></div>{upcoming_html}''';return self.out(page('Club Overview',b,u))
   if path=='/today':
    d=q.get('date',[date.today().isoformat()])[0];w,a=self.vis(u);con='and' if 'where' in w else 'where';r=c.execute('select * from sessions '+w+con+' date=? order by start',a+[d]).fetchall();c.close();b=f'<div class="hero"><div><div class="eyebrow">Schools programme</div><h2>Selected Day</h2></div></div><form class="card"><label>Date</label><div class="row"><input type="date" name="date" value="{e(d)}"><button>Show date</button></div></form>'+(''.join(card(x,True) for x in r) if r else '<div class="card">No coaching scheduled for this date.</div>');return self.out(page('Schools Schedule',b,u))
   if path=='/gpo-costs':
@@ -1085,34 +1090,42 @@ class H(BaseHTTPRequestHandler):
    return self.out(page('Coaching Team',b,u))
   if path=='/compliance':
    c.close()
+   records=compliance_records()
    coaches=sorted(COACHING.get('coaches',{}).items(),key=lambda kv:kv[1].get('name',''))
-   records=safeguarding_records();total=len(coaches)
-   vetted=sum(str(x.get('garda_vetted','')).upper()=='YES' for _,x in coaches)
-   safe=sum(str(x.get('safeguarding','')).upper()=='YES' for _,x in coaches)
-   counts={'valid':0,'warning':0,'urgent':0,'expired':0,'unknown':0};rows=''
+   summary={t:{k:0 for k in ('expired','urgent','warning','valid','unknown')} for t in ('garda','safeguarding')}
+   rows=''
+   def status_cell(key,typ,x):
+    item=records.get(key,{}).get(typ,{})
+    expiry=item.get('expiry','')
+    if not expiry and typ=='garda':
+     expiry=x.get('garda_expiry','') or ''
+     if not re.fullmatch(r'\\d{4}-\\d{2}-\\d{2}',str(expiry)):expiry=''
+    status,days=compliance_state(expiry)
+    summary[typ][status]+=1
+    msg=('Expired '+str(-days)+' days ago' if days is not None and days<0 else str(days)+' days remaining' if days is not None else 'Date missing')
+    file_link=(f'<a href="/compliance/file?coach={quote(key)}&type={typ}">Download</a>' if item.get('file') else 'No file')
+    edit=f"""<form method="post" action="/compliance/save" enctype="multipart/form-data"><input type="hidden" name="coach" value="{e(key)}"><input type="hidden" name="type" value="{typ}"><label>Expiry<input type="date" name="expiry" value="{e(expiry)}" required></label><label>Upload PDF/JPG/PNG<input type="file" name="certificate" accept=".pdf,.jpg,.jpeg,.png"></label><button>Save {typ.title()}</button></form>""" if u['role']=='admin' else ''
+    return f'<td>{e(expiry or "Not recorded")}<div><span class="badge {status}">{e(msg)}</span></div><div>{file_link}</div>{edit}</td>'
    for key,x in coaches:
-    r=records.get(key,{})
-    state,days=safeguarding_state(r);counts[state]+=1
-    desc=('Expired '+str(-days)+' days ago' if days is not None and days<0 else str(days)+' days left' if days is not None else 'Date not recorded')
-    document=f'<a href="/compliance/safeguarding/file?coach={quote(key)}">View file</a>' if r.get('file') else 'Not uploaded'
-    rows+=f"""<tr><td><b>{e(x.get('name'))}</b></td><td>{e(x.get('garda_vetted','Unknown'))}</td><td>{e(x.get('garda_expiry_text') or x.get('garda_expiry') or '-')}</td><td>{e(x.get('safeguarding','Unknown'))}</td><td>{e(r.get('expiry') or 'Not recorded')}</td><td><span class="badge {state}">{e(desc)}</span></td><td>{document}</td><td><form method="post" action="/compliance/safeguarding/save" enctype="multipart/form-data"><input type="hidden" name="coach" value="{e(key)}"><label>Expiry date<input type="date" name="expiry" value="{e(r.get('expiry',''))}" required></label><label>Certificate (PDF/JPG/PNG)<input type="file" name="certificate" accept=".pdf,.jpg,.jpeg,.png"></label><button type="submit">Save</button></form></td></tr>"""
-   alert=counts['warning']+counts['urgent']+counts['expired']
-   b=f"""<div class="hero"><div><div class="eyebrow">Governance</div><h2>Compliance</h2><p>Safeguarding renewal alerts appear here only. Enter the expiry date shown on each coach's record; no expiry date is assumed.</p></div></div>
-   <div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Coaches</b></div><div class="card kpi"><div class="stat">{vetted}</div><b>Garda vetted</b></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding marked complete</b></div><div class="card kpi"><div class="stat">{alert}</div><b>Safeguarding expiry alerts</b><small>Expired or due within 90 days</small></div><div class="card kpi"><div class="stat">{counts['unknown']}</div><b>Missing expiry dates</b></div></div>
-   <div class="card"><h3>Safeguarding 90-day alerts</h3><p>{counts['expired']} expired · {counts['urgent']} due in 0–30 days · {counts['warning']} due in 31–90 days · {counts['valid']} valid beyond 90 days</p><p class="muted">Expiry dates and certificates are stored separately from workbook imports. Uploaded files should be accessible only to authorised dashboard users.</p></div>
-   <div class="card"><h3>Coach safeguarding records and certificate uploads</h3><div class="tw"><table><tr><th>Coach</th><th>Garda Vetted</th><th>Garda Expiry</th><th>Safeguarding</th><th>Safeguarding Expiry</th><th>Alert</th><th>Certificate</th><th>Update record</th></tr>{rows}</table></div></div>"""
+    rows+=f'<tr><td><b>{e(x.get("name",""))}</b></td>{status_cell(key,"garda",x)}{status_cell(key,"safeguarding",x)}</tr>'
+   g=summary['garda'];sg=summary['safeguarding']
+   b=f"""<div class="hero"><div><div class="eyebrow">Governance</div><h2>Compliance</h2><p>Garda vetting and safeguarding documents, expiry dates and dashboard-only 90-day alerts.</p></div></div>
+   <div class="grid"><div class="card kpi"><div class="stat">{len(coaches)}</div><b>Coaches</b></div><div class="card kpi"><div class="stat">{g['expired']+g['urgent']+g['warning']}</div><b>Garda vetting alerts</b><small>Expired or within 90 days</small></div><div class="card kpi"><div class="stat">{sg['expired']+sg['urgent']+sg['warning']}</div><b>Safeguarding alerts</b><small>Expired or within 90 days</small></div><div class="card kpi"><div class="stat">{g['unknown']+sg['unknown']}</div><b>Missing expiry dates</b><small>Across both records</small></div></div>
+   <div class="card"><h3>90-day expiry alerts</h3><p><b>Garda vetting:</b> {g['expired']} expired · {g['urgent']} due within 30 days · {g['warning']} due in 31–90 days · {g['unknown']} dates missing</p><p><b>Safeguarding:</b> {sg['expired']} expired · {sg['urgent']} due within 30 days · {sg['warning']} due in 31–90 days · {sg['unknown']} dates missing</p><small>Expiry dates must be entered from actual records. No email notifications.</small></div>
+   <div class="card"><h3>Coach documents and expiry dates</h3><div class="tw"><table><tr><th>Coach</th><th>Garda vetting certificate and expiry</th><th>Safeguarding certificate and expiry</th></tr>{rows}</table></div></div>"""
    return self.out(page('Compliance',b,u))
-  if path=='/compliance/safeguarding/file':
-   c.close();key=q.get('coach',[''])[0];u=self.need()
-   if not u:return
-   r=safeguarding_records().get(key,{})
-   fname=r.get('file','')
-   if not re.fullmatch(r'[a-f0-9]{32}\\.(pdf|jpg|jpeg|png)',fname):return self.send_error(404)
+  if path=='/compliance/file':
+   c.close()
+   if u['role']!='admin':return self.send_error(403)
+   key=q.get('coach',[''])[0];typ=q.get('type',[''])[0]
+   if typ not in ('garda','safeguarding'):return self.send_error(400)
+   filename=compliance_records().get(key,{}).get(typ,{}).get('file','')
+   if not re.fullmatch(r'[a-f0-9]{32}\\.(pdf|jpg|jpeg|png)',filename):return self.send_error(404)
    try:
-    with open(os.path.join(SAFE_DOCS,fname),'rb') as f:data=f.read()
+    with open(os.path.join(SAFE_DOCS,filename),'rb') as f:data=f.read()
    except OSError:return self.send_error(404)
-   mime='application/pdf' if fname.endswith('.pdf') else 'image/png' if fname.endswith('.png') else 'image/jpeg'
-   self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Disposition','attachment; filename="safeguarding-certificate.'+fname.rsplit('.',1)[-1]+'"');self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
+   mime='application/pdf' if filename.endswith('.pdf') else 'image/png' if filename.endswith('.png') else 'image/jpeg'
+   self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Disposition','attachment; filename="'+typ+'-certificate.'+filename.rsplit('.',1)[-1]+'"');self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
   if path=='/courses':
    c.close();coaches=list(COACHING.get('coaches',{}).values());quals={}
    for x in coaches:qv=str(x.get('qualification','Unknown') or 'Unknown').strip();quals[qv]=quals.get(qv,0)+1
@@ -1182,40 +1195,38 @@ class H(BaseHTTPRequestHandler):
  def do_POST(self):
   global DEMO,COACHING
   p=urlparse(self.path).path
-  if p=='/compliance/safeguarding/save':
+  if p=='/compliance/save':
    u=self.need()
    if not u:return
    if u['role']!='admin':return self.send_error(403)
    n=int(self.headers.get('Content-Length','0'))
-   if n>6*1024*1024:return self.send_error(413)
-   import email
+   if n<=0 or n>6*1024*1024:return self.send_error(413)
    from email.parser import BytesParser
    raw=self.rfile.read(n);ct=self.headers.get('Content-Type','')
-   msg=BytesParser().parsebytes(b'Content-Type: '+ct.encode()+b'\r\nMIME-Version: 1.0\r\n\r\n'+raw)
-   parts={p.get_param('name',header='content-disposition'):p for p in msg.walk() if p.get_content_disposition()=='form-data'}
-   key=(parts.get('coach').get_payload(decode=True).decode('utf-8') if parts.get('coach') else '').strip()
-   expiry=(parts.get('expiry').get_payload(decode=True).decode('utf-8') if parts.get('expiry') else '').strip()
-   if key not in COACHING.get('coaches',{}):return self.send_error(400)
+   msg=BytesParser().parsebytes(b'Content-Type: '+ct.encode()+b'\\r\\nMIME-Version: 1.0\\r\\n\\r\\n'+raw)
+   parts={part.get_param('name',header='content-disposition'):part for part in msg.walk() if part.get_content_disposition()=='form-data'}
+   def field(name):
+    part=parts.get(name)
+    return (part.get_payload(decode=True) or b'').decode('utf-8').strip() if part else ''
+   key=field('coach');typ=field('type');expiry=field('expiry')
+   if key not in COACHING.get('coaches',{}) or typ not in ('garda','safeguarding'):return self.send_error(400)
    try:date.fromisoformat(expiry)
    except ValueError:return self.send_error(400)
-   records=safeguarding_records();record=records.get(key,{})
+   records=compliance_records();record=records.setdefault(key,{}).setdefault(typ,{})
    uploaded=parts.get('certificate')
    if uploaded and uploaded.get_filename():
     data=uploaded.get_payload(decode=True) or b''
     ext=os.path.splitext(uploaded.get_filename().lower())[1]
-    valid=ext in ('.pdf','.png','.jpg','.jpeg') and len(data)<=5*1024*1024 and len(data)>0
-    valid=valid and (data.startswith(b'%PDF-') if ext=='.pdf' else data.startswith(b'\x89PNG\r\n\x1a\n') if ext=='.png' else data.startswith(b'\xff\xd8\xff'))
+    valid=ext in ('.pdf','.png','.jpg','.jpeg') and 0<len(data)<=5*1024*1024
+    valid=valid and (data.startswith(b'%PDF-') if ext=='.pdf' else data.startswith(b'\\x89PNG\\r\\n\\x1a\\n') if ext=='.png' else data.startswith(b'\\xff\\xd8\\xff'))
     if not valid:return self.send_error(400,'Invalid certificate format or size')
     os.makedirs(SAFE_DOCS,mode=0o700,exist_ok=True)
     filename=secrets.token_hex(16)+ext
     with open(os.path.join(SAFE_DOCS,filename),'wb') as f:f.write(data)
     os.chmod(os.path.join(SAFE_DOCS,filename),0o600)
-    old=record.get('file')
     record['file']=filename
-    if old and re.fullmatch(r'[a-f0-9]{32}\.(pdf|jpg|jpeg|png)',old):
-     try:os.remove(os.path.join(SAFE_DOCS,old))
-     except OSError:pass
-   record['expiry']=expiry;records[key]=record;safeguarding_save(records)
+   record['expiry']=expiry
+   compliance_save(records)
    return self.red('/compliance')
   if p=='/admin/coaching-team/upload':
    u=self.need()
