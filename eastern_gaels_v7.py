@@ -449,15 +449,11 @@ def parse_demographics_xlsx(path):
    records.append({'name':' '.join(str(vals[1]).split()),'paid':paid if paid in ('YES','NO') else 'NOT RECORDED'})
   adult_payment[category]=records
 
- # Actual player-list tabs are authoritative for membership by age group.
- # This prevents stale summary cells from leaving the dashboard one player behind.
+ # The Age Group Numbers Breakdown worksheet is authoritative for group totals.
+ # Player lists are displayed separately and must never overwrite those totals.
  for g,rows in players_by_age.items():
-  if g in age_totals:
-   summary_total=age_totals[g]
-   actual_total=len(rows)
-   if summary_total!=actual_total:
-    warnings.append(f'{g} summary total is {summary_total}; player tab contains {actual_total}. Using player-tab count.')
-   age_totals[g]=actual_total
+  if g in age_totals and age_totals[g]!=len(rows):
+   warnings.append(f'{g} summary total is {age_totals[g]}; player tab contains {len(rows)}. Keeping summary total.')
 
  # Senior Adult Non-Playing Members: count only the numbered member list,
  # not the yearly summary rows at the top of the worksheet.
