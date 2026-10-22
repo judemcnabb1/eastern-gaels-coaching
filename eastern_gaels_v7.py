@@ -256,8 +256,8 @@ def parse_integrated_tabs(wb):
  ws=get_sheet('Coaching Qualifications')
  if ws:
   for row in ws.iter_rows(min_row=2,max_col=5,values_only=True):
-   k=ensure(row[0])
-   if k:
+   k=coach_key(row[0]) if row[0] else None
+   if k in coaches:
     q=str(row[1] or '').strip()
     if q: coaches[k]['qualification']=q
    qname=str(row[3] or '').strip()
@@ -272,8 +272,8 @@ def parse_integrated_tabs(wb):
    if not team: continue
    members=[]
    for raw in row[2:]:
-    k=ensure(raw)
-    if not k: continue
+    k=coach_key(raw) if raw else None
+    if k not in coaches: continue
     if team not in coaches[k]['teams']: coaches[k]['teams'].append(team)
     members.append(coaches[k]['name'])
    teams[team]=members
