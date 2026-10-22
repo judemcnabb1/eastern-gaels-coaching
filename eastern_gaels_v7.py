@@ -342,13 +342,19 @@ def parse_demographics_xlsx(path):
    if key in ('TOTAL BOYS','TOTAL GIRLS'):
     value=vals[j+1] if j+1<len(vals) else None
     juvenile_gender['Boys' if key=='TOTAL BOYS' else 'Girls']=num(value)
- for col,g in zip([1,4,7,10,13,16,19,22],['U12','U11','U10','U9','U8','U7','U6','U5']):
+ # Discover age-group columns from the actual workbook headings, not fixed positions.
+ import re
+ for col in range(1,45):
+  heading=clean_name(agews.cell(1,col).value)
+  match=re.match(r'^U(\d+) PLAYER AREA$',heading)
+  if not match:continue
+  g='U'+match.group(1)
   areas={clean_name(agews.cell(r,col).value):num(agews.cell(r,col+1).value) for r in range(2,8) if agews.cell(r,col).value}
   schools={clean_name(agews.cell(r,col).value):num(agews.cell(r,col+1).value) for r in range(10,17) if agews.cell(r,col).value}
   total=num(agews.cell(8,col+1).value) or sum(areas.values())
   age_totals[g]=total;age_areas[g]=areas;age_schools[g]=schools
-  if sum(areas.values())!=total:warnings.append(f'{g} area breakdown sums to {sum(areas.values())}, total is {total}')
-  if sum(schools.values())!=total:warnings.append(f'{g} school breakdown sums to {sum(schools.values())}, total is {total}')
+  if sum(areas.values())!=total:warnings.append(f'{g} area breakdown sums to {sum(areas.values())}, summary total is {total}')
+  if sum(schools.values())!=total:warnings.append(f'{g} school breakdown sums to {sum(schools.values())}, summary total is {total}')
  def two_col(prefix,skip_totals=True):
   ws=find_sheet(prefix);d={}
   for row in ws.iter_rows(min_row=2,max_col=2,values_only=True):
