@@ -736,6 +736,17 @@ def compliance_status_chart(data,rate):
  legend=''.join(f'<span><i style="background:{colors.get(k,"#98A2B3")}"></i>{e(k)} <b>{v}</b></span>' for k,v in data.items())
  return f'<div class="compliance-layout"><div class="compliance-ring" style="background:conic-gradient({",".join(stops)})"><div><strong>{int(rate)}%</strong><small>Compliant</small></div></div><div class="chart-legend">{legend}</div></div>'
 
+
+def two_compliance_charts(counts, coach_count):
+ def one(typ,title):
+  vals=counts[typ]
+  rate=round(100*vals['Compliant']/coach_count) if coach_count else 0
+  chart=compliance_status_chart(vals,rate)
+  for label in ('Compliant','Pending','Expired'):
+   chart=chart.replace('</i>'+label+' <b>','</i>'+title+' '+label+' <b>')
+  return '<section><h4 style="margin:0 0 12px">'+e(title)+'</h4>'+chart+'</section>'
+ return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px">'+one('garda','Garda')+one('safeguarding','Safeguarding')+'</div>'
+
 def hbar_chart(data):
  items=[(str(k),int(v)) for k,v in data.items()];mx=max([v for _,v in items] or [1])
  return '<div class="hbars qual-bars">'+''.join(f'<div class="hbar"><span>{e(k)}</span><div><i style="width:{v*100/mx:.1f}%;background:linear-gradient(90deg,{CHART_COLORS[i%len(CHART_COLORS)]},{CHART_COLORS[(i+1)%len(CHART_COLORS)]})"></i></div><b>{v}</b></div>' for i,(k,v) in enumerate(items))+'</div>'
@@ -1074,15 +1085,7 @@ class H(BaseHTTPRequestHandler):
      state,_=compliance_state(expiry)
      category='Expired' if state=='expired' else 'Pending' if state=='unknown' else 'Compliant'
      compliance_counts[typ][category]+=1
-   def compliance_subchart(typ,title):
-    counts=compliance_counts[typ]
-    rate=round(100*counts['Compliant']/len(coaches)) if coaches else 0
-    chart=compliance_status_chart(counts,rate)
-    # Each independent legend carries its own Garda/Safeguarding labels.
-    for label in ('Compliant','Pending','Expired'):
-     chart=chart.replace('</i>'+label+' <b>','</i>'+title+' '+label+' <b>')
-    return '<section><h4 style="margin:0 0 12px">'+e(title)+'</h4>'+chart+'</section>'
-   compliance_chart='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:24px">'+compliance_subchart('garda','Garda')+compliance_subchart('safeguarding','Safeguarding')+'</div>'
+   compliance_chart=two_compliance_charts(compliance_counts,len(coaches))
    compliance_rate=round(100*sum(compliance_counts[t]['Compliant'] for t in ('garda','safeguarding'))/(2*len(coaches))) if coaches else 0
    quals=COACHING.get('qualification_summary',{}) or {}
    if not quals:
@@ -1162,9 +1165,11 @@ class H(BaseHTTPRequestHandler):
    for key,x in coaches:
     rows+=f'<tr><td><b>{e(x.get("name",""))}</b></td>{status_cell(key,"garda",x)}{status_cell(key,"safeguarding",x)}</tr>'
    g=summary['garda'];sg=summary['safeguarding']
+   page_counts={typ:{'Compliant':summary[typ]['valid']+summary[typ]['urgent']+summary[typ]['warning'],'Pending':summary[typ]['unknown'],'Expired':summary[typ]['expired']} for typ in ('garda','safeguarding')}
+   page_charts=two_compliance_charts(page_counts,len(coaches))
    b=f"""<div class="hero"><div><div class="eyebrow">Governance</div><h2>Compliance</h2><p>Garda vetting and safeguarding documents, expiry dates and dashboard-only 90-day alerts.</p></div></div>
    <div class="grid"><div class="card kpi"><div class="stat">{len(coaches)}</div><b>Coaches</b></div><div class="card kpi"><div class="stat">{g['expired']+g['urgent']+g['warning']}</div><b>Garda vetting alerts</b><small>Expired or within 90 days</small></div><div class="card kpi"><div class="stat">{sg['expired']+sg['urgent']+sg['warning']}</div><b>Safeguarding alerts</b><small>Expired or within 90 days</small></div><div class="card kpi"><div class="stat">{g['unknown']+sg['unknown']}</div><b>Missing expiry dates</b><small>Across both records</small></div></div>
-   <div class="card"><h3>90-day expiry alerts</h3><p><b>Garda vetting:</b> {g['expired']} expired · {g['urgent']} due within 30 days · {g['warning']} due in 31–90 days · {g['unknown']} dates missing</p><p><b>Safeguarding:</b> {sg['expired']} expired · {sg['urgent']} due within 30 days · {sg['warning']} due in 31–90 days · {sg['unknown']} dates missing</p><small>Expiry dates must be entered from actual records. No email notifications.</small></div>
+   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:16px;align-items:start"><div class="card"><h3>90-day expiry alerts</h3><p><b>Garda vetting:</b> {g['expired']} expired · {g['urgent']} due within 30 days · {g['warning']} due in 31–90 days · {g['unknown']} dates missing</p><p><b>Safeguarding:</b> {sg['expired']} expired · {sg['urgent']} due within 30 days · {sg['warning']} due in 31–90 days · {sg['unknown']} dates missing</p><small>Expiry dates must be entered from actual records. No email notifications.</small></div><div class="card"><h3>Compliance Summary</h3>{page_charts}</div></div>
    <div class="card"><h3>Coach documents and expiry dates</h3><div class="tw"><table><tr><th>Coach</th><th>Garda vetting certificate and expiry</th><th>Safeguarding certificate and expiry</th></tr>{rows}</table></div></div>"""
    return self.out(page('Compliance',b,u))
   if path=='/compliance/file':
