@@ -539,7 +539,7 @@ def certificate_drive_session():
  raw=os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON','').strip()
  if not raw:raise RuntimeError('Google Drive service account is not configured')
  info=json.loads(raw)
- creds=service_account.Credentials.from_service_account_info(info,scopes=['https://www.googleapis.com/auth/drive.file'])
+ creds=service_account.Credentials.from_service_account_info(info,scopes=['https://www.googleapis.com/auth/drive'])
  return AuthorizedSession(creds)
 def certificate_drive_upload(typ,data,ext):
  from urllib.parse import quote as urlquote
@@ -551,7 +551,14 @@ def certificate_drive_upload(typ,data,ext):
  body=(('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n').encode()+json.dumps({'name':name,'parents':[folder]}).encode()+b'\r\n'+('--'+boundary+'\r\nContent-Type: '+mime+'\r\n\r\n').encode()+data+b'\r\n'+('--'+boundary+'--\r\n').encode())
  session=certificate_drive_session()
  r=session.post('https://www.googleapis.com/upload/drive/v3/files',params={'uploadType':'multipart','fields':'id,name,parents'},headers={'Content-Type':'multipart/related; boundary='+boundary},data=body,timeout=60)
- if r.status_code not in (200,201):raise RuntimeError('Drive certificate upload failed (HTTP '+str(r.status_code)+')')
+ if r.status_code not in (200,201):
+  # Log Google's machine-readable reason, not file content or credentials.
+  try:
+   err=r.json().get('error',{})
+   reasons=','.join(str(x.get('reason','')) for x in err.get('errors',[]) if isinstance(x,dict))
+   reason=reasons or str(err.get('status','unknown'))
+  except (ValueError,AttributeError,TypeError):reason='unavailable'
+  raise RuntimeError('Drive certificate upload failed (HTTP '+str(r.status_code)+', reason='+reason[:120]+')')
  result=r.json()
  if not result.get('id') or folder not in result.get('parents',[]):raise RuntimeError('Drive upload not confirmed in the expected folder')
  return result['id']
