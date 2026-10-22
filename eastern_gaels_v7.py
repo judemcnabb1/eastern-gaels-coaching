@@ -449,6 +449,16 @@ def parse_demographics_xlsx(path):
    records.append({'name':' '.join(str(vals[1]).split()),'paid':paid if paid in ('YES','NO') else 'NOT RECORDED'})
   adult_payment[category]=records
 
+ # Some player tabs have non-standard headings. Count numbered rows directly
+ # for U13 rather than allowing header discovery to silently leave it at zero.
+ u13_sheet=next((wb[n] for n in names if re.search(r'(?i)\bU\s*13\b',n) and 'PLAYER' in clean_name(n)),None)
+ if u13_sheet is not None:
+  u13_count=0
+  for record in u13_sheet.iter_rows(min_row=2,max_col=2,values_only=True):
+   ordinal,player=record
+   if str(ordinal or '').strip().isdigit() and str(player or '').strip():u13_count+=1
+  if u13_count:age_totals['U13']=u13_count
+
  # Numbered player-list records are authoritative for age-group membership counts.
  # Summary area/school cells can be stale (notably U9, U10, U13 and U14).
  for g,rows in players_by_age.items():
