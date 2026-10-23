@@ -31,7 +31,7 @@ def catchment_pie(counts):
     if not total:
         return '<p class="report-no-data">No parish catchment data available.</p>'
     colors = ['#006b43', '#e9b62e', '#16a66a', '#66b6a2', '#b6811e', '#7c9690']
-    output = ['<div class="catchment-pie-layout"><svg viewBox="0 0 240 240" role="img" aria-label="Catchment percentages">']
+    output = ['<div class="catchment-pie-layout"><svg viewBox="0 0 240 270" role="img" aria-label="3D parish catchment percentages">', '<ellipse cx="120" cy="139" rx="105" ry="105" fill="#174d3a" opacity=".28"/>']
     start = -math.pi / 2
     for i, (name, count) in enumerate(items):
         part = count / total
@@ -46,9 +46,9 @@ def catchment_pie(counts):
         lx, ly = 120 + 73 * math.cos(mid), 120 + 73 * math.sin(mid)
         output.append(f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="bold" fill="white">{part*100:.1f}%</text>')
         start = end
-    output.append('</svg><div class="catchment-pie-key">')
+    output.append('<ellipse cx="120" cy="245" rx="98" ry="9" fill="#003f2b" opacity=".16"/></svg><div class="catchment-pie-key"><div class="catchment-legend-heading">AREA LEGEND</div>')
     for i, (name, count) in enumerate(items):
-        output.append(f'<div><span style="color:{colors[i % len(colors)]}">●</span> {escape(name)} <strong>{count} ({count/total*100:.1f}%)</strong></div>')
+        output.append(f'<div class="catchment-legend-row"><span class="catchment-swatch" style="background:{colors[i % len(colors)]}"></span><span class="catchment-area">{escape(name)}</span><strong>{count} ({count/total*100:.1f}%)</strong></div>')
     output.append(f'<div class="catchment-total">Total: {total} players</div></div></div>')
     return ''.join(output)
 
@@ -97,7 +97,7 @@ def render(demo, charts):
     .metric strong{display:block;font-size:40px;line-height:1.15;font-weight:900;letter-spacing:-1px;color:#004d32}.metric span{font-size:12px;font-weight:800;text-transform:uppercase}
     .report-charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
     .panel{border:1px solid #d8e5de;padding:12px;border-radius:7px;overflow:hidden;min-height:215px}
-.catchment-pie-layout{display:flex;align-items:center;gap:10px}.catchment-pie-layout svg{width:52%;flex-shrink:0}.catchment-pie-key{font-size:10px;flex:1}.catchment-pie-key div{margin:4px 0}.catchment-pie-key strong{display:block;color:#005638}.catchment-total{border-top:1px solid #ddd;padding-top:5px;font-weight:bold} .report-parish-counts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;font-size:11px}.report-parish-counts>div{display:flex;justify-content:space-between;gap:5px;border-bottom:1px solid #e6eee9;padding:3px 0}.report-parish-counts strong{white-space:nowrap;color:#005638}.report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
+.catchment-pie-layout{display:flex;flex-direction:column;align-items:center;gap:8px}.catchment-pie-layout svg{width:75%;max-width:230px;flex:none;filter:drop-shadow(0 6px 4px #003e2b35);transform:scaleY(.84)}.catchment-pie-key{font-size:11px;width:100%}.catchment-legend-heading{font-size:10px;font-weight:900;color:#005638;letter-spacing:1px}.catchment-legend-row{display:flex;align-items:center;gap:7px;padding:4px 0;border-bottom:1px solid #e1ebe5}.catchment-swatch{width:11px;height:11px;flex:none;border-radius:2px}.catchment-area{flex:1}.catchment-pie-key strong{color:#005638;white-space:nowrap}.catchment-total{border-top:1px solid #ddd;padding-top:5px;font-weight:bold} .report-parish-counts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;font-size:11px}.report-parish-counts>div{display:flex;justify-content:space-between;gap:5px;border-bottom:1px solid #e6eee9;padding:3px 0}.report-parish-counts strong{white-space:nowrap;color:#005638}.report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
     @media(max-width:650px){.report-metrics,.report-charts{grid-template-columns:1fr 1fr}.report-identity{padding:20px}}
     @media print{@page{size:A4;margin:0}.sidebar,.topbar,.report-tools{display:none!important}
     .report-page{width:210mm;height:297mm;min-height:297mm;max-width:none;box-shadow:none;margin:0;break-after:page;page-break-after:always}.report-page:last-of-type{break-after:auto;page-break-after:auto}
