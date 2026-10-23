@@ -100,7 +100,7 @@ def render(demo, charts):
     year = years[-1] if years else "Current"
     juvenile = sum(int(v or 0) for v in ages.values())
     adult = sum(int(demo.get(k, 0) or 0) for k in ("senior_adult_non_playing_count", "senior_adult_ladies_count", "senior_adult_mens_count"))
-    metrics = [("Total members", juvenile + adult), ("Juvenile players", juvenile), ("Adult members", adult), ("Age groups", len(ages))]
+    metrics = [("Total Active Members", juvenile + adult), ("Juvenile players", juvenile), ("Adult members", adult), ("Age groups", len(ages))]
     tiles = "".join(f'<div class="metric"><strong>{v}</strong><span>{escape(k)}</span></div>' for k, v in metrics)
     gender = demo.get("juvenile_gender", {}) or {}
     boys = int(gender.get("Boys", 0) or 0)
