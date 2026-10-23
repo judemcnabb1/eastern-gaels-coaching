@@ -106,11 +106,15 @@ def render(demo, charts):
     boys = int(gender.get("Boys", 0) or 0)
     girls = int(gender.get("Girls", 0) or 0)
     gender_chart = catchment_pie({"Boys": boys, "Girls": girls}) if boys + girls else '<p class="report-no-data">Juvenile boys/girls totals are not available in the current dataset.</p>'
+    senior_men = int(demo.get("senior_adult_mens_count", 0) or 0)
+    senior_women = int(demo.get("senior_adult_ladies_count", 0) or 0)
+    senior_chart = catchment_pie({"Senior men": senior_men, "Senior women": senior_women}) if senior_men + senior_women else '<p class="report-no-data">Senior adult men and women membership totals are not available in the current dataset.</p>'
     parish_counts = {str(k): int(v or 0) for k, v in parish.items()} if isinstance(parish, dict) else {}
     parish_total = sum(v for v in parish_counts.values() if v > 0)
     parish_legend = ('<div class="report-parish-counts">' + ''.join(f'<div><span>{escape(name)}</span><strong>{count} · {count/parish_total:.0%}</strong></div>' for name, count in sorted(parish_counts.items(), key=lambda item: -item[1]) if count > 0) + '</div>') if parish_total else '<p class="report-no-data">No parish catchment data available.</p>'
     graphs = [
         ("Juvenile boys & girls", gender_chart),
+        ("Senior adult men & women — 3D pie", senior_chart),
         ("Players by age group — 3D bars", age_group_3d(ages)),
         ("Juvenile membership trend", membership_trend(growth)),
         ("Parish catchment — players by area", catchment_pie(parish_counts)),
@@ -138,7 +142,8 @@ def render(demo, charts):
     .panel{border:1px solid #d8e5de;padding:12px;border-radius:7px;overflow:hidden;min-height:215px}
 .catchment-pie-layout{display:flex;flex-direction:column;align-items:center;gap:8px}.catchment-pie-layout svg{width:75%;max-width:230px;flex:none;filter:drop-shadow(0 6px 4px #003e2b35);transform:scaleY(.84)}.catchment-pie-key{font-size:11px;width:100%}.catchment-legend-heading{font-size:10px;font-weight:900;color:#005638;letter-spacing:1px}.catchment-legend-row{display:flex;align-items:center;gap:7px;padding:4px 0;border-bottom:1px solid #e1ebe5}.catchment-swatch{width:11px;height:11px;flex:none;border-radius:2px}.catchment-area{flex:1}.catchment-pie-key strong{color:#005638;white-space:nowrap}.catchment-total{border-top:1px solid #ddd;padding-top:5px;font-weight:bold} .report-parish-counts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;font-size:11px}.report-parish-counts>div{display:flex;justify-content:space-between;gap:5px;border-bottom:1px solid #e6eee9;padding:3px 0}.report-parish-counts strong{white-space:nowrap;color:#005638}.report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
     @media(max-width:650px){.report-metrics,.report-charts{grid-template-columns:1fr 1fr}.report-identity{padding:20px}}
-    @media print{@page{size:A4;margin:0}.sidebar,.topbar,.report-tools{display:none!important}
+    @media print{.report-charts{gap:8px;margin-top:12px}.panel{padding:8px;min-height:0}.panel h3{font-size:13px;margin:4px 0}.catchment-pie-layout svg{max-width:145px}.catchment-legend-row{padding:2px 0}.report-body{padding:18px 24px 12px}.report-heading{margin-bottom:10px}.metric{padding:10px 4px}.metric strong{font-size:31px}.report-trend-svg{max-height:145px}.report-3d-bars{max-height:145px}
+    @page{size:A4;margin:0}.sidebar,.topbar,.report-tools{display:none!important}
     .report-page{width:210mm;height:297mm;min-height:297mm;max-width:none;box-shadow:none;margin:0;break-after:page;page-break-after:always}.report-page:last-of-type{break-after:auto;page-break-after:auto}
     *{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
     </style>"""
