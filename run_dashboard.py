@@ -23,9 +23,9 @@ class ReportHandler(app.H):
     def do_GET(self):
         path = app.urlparse(self.path).path
         report_assets = {
-            '/report-pitch.png': ('report-pitch.png', 'image/png'),
-            '/report-eastern-gaels.jpg': ('report-eastern-gaels.jpg', 'image/jpeg'),
-            '/report-meath.png': ('report-meath.png', 'image/png'),
+            '/report-pitch.png': ('EG Pitch .png', 'image/png'),
+            '/report-eastern-gaels.jpg': ('Eastern Gaels .jpg', 'image/jpeg'),
+            '/report-meath.png': ('Meath Logo.png', 'image/png'),
         }
         if path in report_assets:
             name, mime = report_assets[path]
