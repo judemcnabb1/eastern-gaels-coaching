@@ -24,6 +24,7 @@ class ReportHandler(app.H):
         path = app.urlparse(self.path).path
         report_assets = {
             '/report-pitch.png': ('EG Pitch .png', 'image/png'),
+            '/report-demographics-cover.png': ('demographics-cover.png', 'image/png'),
             '/report-eastern-gaels.jpg': ('Eastern Gaels .jpg', 'image/jpeg'),
             '/report-meath.png': ('Meath Logo.png', 'image/png'),
         }
