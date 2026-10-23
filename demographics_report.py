@@ -126,7 +126,7 @@ def render(demo, charts):
     .report-page{background:#fff;color:#064630;max-width:840px;min-height:1080px;margin:20px auto;box-shadow:0 5px 25px #0002;overflow:hidden}
     .report-accent{height:22px;background:linear-gradient(110deg,#005638 0 65%,#ffca28 65% 80%,#005638 80%)}
     .report-identity{display:flex;justify-content:space-evenly;align-items:center;gap:25px;padding:38px 35px 18px;text-align:center}
-    .report-identity img{width:154px;height:155px;object-fit:contain}.report-identity p{font-weight:800;letter-spacing:1px;font-size:12px;margin:6px 0}.report-mini-identity{display:flex;align-items:center;gap:12px}.report-mini-identity img{width:56px;height:64px;object-fit:contain}.report-heading{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:18px}.report-heading h2{margin:0}.report-heading p{margin:4px 0;color:#527566}
+    .report-identity img{width:154px;height:155px;object-fit:contain}.report-identity>div{width:190px;display:flex;flex-direction:column;align-items:center}.report-identity img{object-fit:fill}.report-identity p{font-weight:800;letter-spacing:1px;font-size:12px;margin:6px 0}.report-mini-identity{display:flex;align-items:center;gap:12px}.report-mini-identity img{width:56px;height:64px;object-fit:contain}.report-heading{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:18px}.report-heading h2{margin:0}.report-heading p{margin:4px 0;color:#527566}
     .report-cover-title{text-align:center;padding:18px 20px 28px}
     .report-cover-title h1{font-size:clamp(42px,7vw,64px);line-height:1.1;color:#004b32;margin:0}
     .report-cover-title h2{font-size:38px;color:#004b32}
