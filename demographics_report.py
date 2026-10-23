@@ -25,11 +25,11 @@ def render(demo, charts):
     .report-accent{height:22px;background:linear-gradient(110deg,#005638 0 65%,#ffca28 65% 80%,#005638 80%)}
     .report-identity{display:flex;justify-content:space-around;align-items:center;gap:25px;padding:45px 35px;text-align:center}
     .report-identity img{max-width:180px;max-height:170px;object-fit:contain}
-    .report-cover-title{text-align:center;padding:45px 20px}
+    .rpt-county{border:4px solid #ffc72c;padding:28px;color:#005638;font-size:25px;font-weight:900}.report-cover-title{text-align:center;padding:45px 20px}
     .report-cover-title h1{font-size:clamp(42px,7vw,70px);line-height:1.1;color:#004b32;margin:0}
     .report-cover-title h2{font-size:38px;color:#004b32}
     .report-cover-title p{font-size:20px;font-style:italic}
-    .report-photo{height:310px;background:linear-gradient(0deg,#00563888,transparent),url('/report-pitch.jpg') center/cover no-repeat}
+    .report-photo{height:310px;background:linear-gradient(0deg,#00563888,transparent),url('/maiden-tower.png') center/cover no-repeat}
     .report-jersey{height:200px;background:url('/report-jersey.jpg') center/contain no-repeat}
     .report-footer{background:#005638;color:#fff;text-align:center;padding:16px;letter-spacing:2px;font-size:12px;font-weight:700}
     .report-body{padding:26px}.report-body h2{color:#004b32}
@@ -45,7 +45,7 @@ def render(demo, charts):
     *{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
     </style>"""
     # Asset URLs are supplied by the main application when the official files are installed.
-    identity = '<div class="report-identity"><div><img src="/report-eastern-gaels.png" alt="Eastern Gaels official crest"><p>EASTERN GAELS</p></div><div><img src="/report-meath.png" alt="Meath GAA official crest"><p>MEATH GAA</p></div></div>'
+    identity = '<div class="report-identity"><div><img src="/club-jersey.png" alt="Eastern Gaels official crest"><p>EASTERN GAELS</p></div><div class="rpt-county"><strong>MEATH GAA</strong><p>AN MHÍ</p></div></div>'
     footer = '<div class="report-footer">AN MHÍ | EASTERN GAELS | TOGETHER WE GROW</div>'
     cover = '<section class="report-page"><div class="report-accent"></div>' + identity + '<div class="report-cover-title"><h1>Demographics<br>Report</h1><h2>' + escape(year) + '</h2><p>Our People | Our Club | Our Community</p></div><div class="report-photo"></div><div class="report-jersey"></div>' + footer + '</section>'
     data = '<section class="report-page"><div class="report-accent"></div><div class="report-body"><h2>DEMOGRAPHICS REPORT ' + escape(year) + '</h2><p>Live dashboard data</p><div class="report-metrics">' + tiles + '</div><div class="report-charts">' + panels + '</div><p>Source: Eastern Gaels dashboard demographics dataset. Juvenile growth is distinct from total club membership.</p></div>' + footer + '</section>'
