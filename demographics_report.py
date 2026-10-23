@@ -12,7 +12,12 @@ def render(demo, charts):
     adult = sum(int(demo.get(k, 0) or 0) for k in ("senior_adult_non_playing_count", "senior_adult_ladies_count", "senior_adult_mens_count"))
     metrics = [("Total members", juvenile + adult), ("Juvenile players", juvenile), ("Adult members", adult), ("Age groups", len(ages))]
     tiles = "".join(f'<div class="metric"><strong>{v}</strong><span>{escape(k)}</span></div>' for k, v in metrics)
+    gender = demo.get("juvenile_gender", {}) or {}
+    boys = int(gender.get("Boys", 0) or 0)
+    girls = int(gender.get("Girls", 0) or 0)
+    gender_chart = charts["donut"]({"Boys": boys, "Girls": girls}, subtitle="juvenile players") if boys + girls else '<p class="report-no-data">Juvenile boys/girls totals are not available in the current dataset.</p>'
     graphs = [
+        ("Juvenile boys & girls", gender_chart),
         ("Players by age group", charts["bar"](ages, 230)),
         ("Juvenile membership trend", charts["line"](growth)),
         ("Parish catchment", charts["donut"](parish, subtitle="players")),
@@ -38,7 +43,7 @@ def render(demo, charts):
     .metric strong{display:block;font-size:32px}.metric span{font-size:12px;font-weight:800;text-transform:uppercase}
     .report-charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
     .panel{border:1px solid #d8e5de;padding:12px;border-radius:7px;overflow:hidden;min-height:215px}
-    .panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
+    .report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
     @media(max-width:650px){.report-metrics,.report-charts{grid-template-columns:1fr 1fr}.report-identity{padding:20px}}
     @media print{@page{size:A4;margin:0}.sidebar,.topbar,.report-tools{display:none!important}
     .report-page{width:210mm;height:297mm;min-height:297mm;max-width:none;box-shadow:none;margin:0;break-after:page;page-break-after:always}.report-page:last-of-type{break-after:auto;page-break-after:auto}
