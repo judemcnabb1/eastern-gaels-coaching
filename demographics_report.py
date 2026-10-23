@@ -127,7 +127,7 @@ def render(demo, charts):
     .report-cover-title h1{font-size:clamp(42px,7vw,64px);line-height:1.1;color:#004b32;margin:0}
     .report-cover-title h2{font-size:38px;color:#004b32}
     .report-cover-title p{font-size:20px;font-style:italic}
-    .report-photo{height:445px;background:linear-gradient(0deg,#003e2baa,transparent 65%),url('/report-pitch.png') center/cover no-repeat}
+    .report-photo{height:445px;background:linear-gradient(0deg,#003e2baa,transparent 65%),url('/report-demographics-cover.png') center/cover no-repeat}
     .report-jersey{height:200px;background:url('/report-jersey.jpg') center/contain no-repeat}
     .report-footer{background:#005638;color:#fff;text-align:center;padding:16px;letter-spacing:2px;font-size:12px;font-weight:700}
     .report-body{padding:26px 28px 20px}.report-body h2{color:#004b32}
