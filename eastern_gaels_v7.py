@@ -657,6 +657,15 @@ def session_sync_key(x):
        gv('class_group',gv('group')),gv('title',gv('session'))]
  return '|'.join(' '.join(str(v or '').strip().lower().split()) for v in vals)
 
+def activate_gpo_costs_from_xlsx(path):
+ global GPO_COSTS
+ gpo=parse_gpo_costs_xlsx(path)
+ tmp=GPO_COST_FILE+'.tmp'
+ with open(tmp,'w',encoding='utf8') as f:json.dump(gpo,f,indent=2,ensure_ascii=False)
+ os.replace(tmp,GPO_COST_FILE)
+ GPO_COSTS=load_gpo_costs()
+ return {k:v.get('total',0) for k,v in GPO_COSTS.get('years',{}).items()}
+
 def activate_schools_from_xlsx(path):
  global GPO_COSTS
  sessions=parse_schools_xlsx(path)  # validate before touching the live schedule
@@ -681,9 +690,7 @@ def activate_schools_from_xlsx(path):
   c.rollback();raise
  finally:c.close()
  shutil.copy2(path,os.path.join(DATA_DIR,'schools_schedule_current.xlsx'))
- tmp=GPO_COST_FILE+'.tmp'
- with open(tmp,'w',encoding='utf8') as f:json.dump(gpo,f,indent=2,ensure_ascii=False)
- os.replace(tmp,GPO_COST_FILE);GPO_COSTS=load_gpo_costs()
+ activate_gpo_costs_from_xlsx(path)
  return {'sessions':len(sessions),'gpo_costs':{k:v.get('total',0) for k,v in GPO_COSTS.get('years',{}).items()}}
 
 def sync_google_sources():
@@ -716,6 +723,13 @@ def sync_google_sources():
     old=status.get('schools',{})
     status['schools']={'ok':False,'last_success':old.get('last_success'),
      'summary':old.get('summary'),'error':str(ex)}
+    # The GPO cost tabs can still refresh if the timetable import fails.
+    try:
+     if os.path.exists(schools_path):
+      totals=activate_gpo_costs_from_xlsx(schools_path)
+      status['gpo_costs']={'ok':True,'last_success':datetime.now().isoformat(timespec='seconds'),'totals':totals,'error':None}
+    except Exception as gpo_ex:
+     status['gpo_costs']={'ok':False,'error':str(gpo_ex)}
    # openpyxl read-only workbooks can retain ZipFile handles briefly on Windows.
    # Force finalisation before TemporaryDirectory removes the downloaded XLSX files.
    gc.collect()
@@ -1360,7 +1374,7 @@ class H(BaseHTTPRequestHandler):
    for x in ss:
     if x['actual_status']=='Completed' and x['start'] and x['end']:
      try:
-      st=datetime.strptime(x['start'],'%H:%M');en=datetime.strptime(x['end'],'%H:%M');hours+=max(0,(en-st).seconds/3600)
+      st=datetime.strptime(x['start'],'%H:%M');en=datetime.strptime(x['end'],'%H:%M');hours+=max(0,(en-st).total_seconds()/3600)
      except:pass
    pct=round(done*100/total) if total else 0
    byschool={};bycoach={};bymonth={}
