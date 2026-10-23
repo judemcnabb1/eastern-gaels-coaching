@@ -23,6 +23,35 @@ def age_group_3d(ages):
         shapes.append(f'<text x="{x+width/2:.1f}" y="257" text-anchor="middle" font-size="14" font-weight="700" fill="#285440">{escape(label)}</text>')
     return ''.join(shapes) + '</svg>'
 
+def catchment_pie(counts):
+    import math
+    items = [(str(k), max(0, int(v or 0))) for k, v in counts.items()]
+    items = sorted((item for item in items if item[1]), key=lambda item: -item[1])
+    total = sum(v for _, v in items)
+    if not total:
+        return '<p class="report-no-data">No parish catchment data available.</p>'
+    colors = ['#006b43', '#e9b62e', '#16a66a', '#66b6a2', '#b6811e', '#7c9690']
+    output = ['<div class="catchment-pie-layout"><svg viewBox="0 0 240 240" role="img" aria-label="Catchment percentages">']
+    start = -math.pi / 2
+    for i, (name, count) in enumerate(items):
+        part = count / total
+        end = start + part * 2 * math.pi
+        x1, y1 = 120 + 105 * math.cos(start), 120 + 105 * math.sin(start)
+        x2, y2 = 120 + 105 * math.cos(end), 120 + 105 * math.sin(end)
+        if len(items) == 1:
+            output.append(f'<circle cx="120" cy="120" r="105" fill="{colors[i % len(colors)]}"/>')
+        else:
+            output.append(f'<path d="M120,120 L{x1:.2f},{y1:.2f} A105,105 0 {int(part > .5)},1 {x2:.2f},{y2:.2f} Z" fill="{colors[i % len(colors)]}" stroke="white" stroke-width="2"/>')
+        mid = (start + end) / 2
+        lx, ly = 120 + 73 * math.cos(mid), 120 + 73 * math.sin(mid)
+        output.append(f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="bold" fill="white">{part*100:.1f}%</text>')
+        start = end
+    output.append('</svg><div class="catchment-pie-key">')
+    for i, (name, count) in enumerate(items):
+        output.append(f'<div><span style="color:{colors[i % len(colors)]}">●</span> {escape(name)} <strong>{count} ({count/total*100:.1f}%)</strong></div>')
+    output.append(f'<div class="catchment-total">Total: {total} players</div></div></div>')
+    return ''.join(output)
+
 def render(demo, charts):
     growth = demo.get("growth", {})
     ages = demo.get("age_totals", {})
@@ -45,7 +74,7 @@ def render(demo, charts):
         ("Juvenile boys & girls", gender_chart),
         ("Players by age group — 3D bars", age_group_3d(ages)),
         ("Juvenile membership trend", charts["line"](growth)),
-        ("Parish catchment — players by area", charts["donut"](parish_counts, subtitle="players") + parish_legend),
+        ("Parish catchment — players by area", catchment_pie(parish_counts)),
         ("Schools represented", charts["horizontal"](schools)),
     ]
     panels = "".join(f'<section class="panel"><h3>{escape(title)}</h3>{graph}</section>' for title, graph in graphs)
@@ -68,7 +97,7 @@ def render(demo, charts):
     .metric strong{display:block;font-size:40px;line-height:1.15;font-weight:900;letter-spacing:-1px;color:#004d32}.metric span{font-size:12px;font-weight:800;text-transform:uppercase}
     .report-charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
     .panel{border:1px solid #d8e5de;padding:12px;border-radius:7px;overflow:hidden;min-height:215px}
-    .report-parish-counts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;font-size:11px}.report-parish-counts>div{display:flex;justify-content:space-between;gap:5px;border-bottom:1px solid #e6eee9;padding:3px 0}.report-parish-counts strong{white-space:nowrap;color:#005638}.report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
+.catchment-pie-layout{display:flex;align-items:center;gap:10px}.catchment-pie-layout svg{width:52%;flex-shrink:0}.catchment-pie-key{font-size:10px;flex:1}.catchment-pie-key div{margin:4px 0}.catchment-pie-key strong{display:block;color:#005638}.catchment-total{border-top:1px solid #ddd;padding-top:5px;font-weight:bold} .report-parish-counts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;font-size:11px}.report-parish-counts>div{display:flex;justify-content:space-between;gap:5px;border-bottom:1px solid #e6eee9;padding:3px 0}.report-parish-counts strong{white-space:nowrap;color:#005638}.report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
     @media(max-width:650px){.report-metrics,.report-charts{grid-template-columns:1fr 1fr}.report-identity{padding:20px}}
     @media print{@page{size:A4;margin:0}.sidebar,.topbar,.report-tools{display:none!important}
     .report-page{width:210mm;height:297mm;min-height:297mm;max-width:none;box-shadow:none;margin:0;break-after:page;page-break-after:always}.report-page:last-of-type{break-after:auto;page-break-after:auto}
