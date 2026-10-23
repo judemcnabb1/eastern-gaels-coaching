@@ -52,6 +52,45 @@ def catchment_pie(counts):
     output.append(f'<div class="catchment-total">Total: {total} players</div></div></div>')
     return ''.join(output)
 
+def membership_trend(growth):
+    """Large readable yearly totals, with a print-friendly line chart."""
+    import math
+    items = []
+    for year, value in growth.items():
+        if not str(year).isdigit():
+            continue
+        try:
+            total = int(value)
+        except (TypeError, ValueError):
+            continue
+        items.append((int(year), total))
+    items.sort()
+    if not items:
+        return '<p class="report-no-data">No membership trend data available.</p>'
+    maximum = max(1, *(v for _, v in items))
+    minimum = min(0, *(v for _, v in items))
+    span = max(1, maximum - minimum)
+    left, right = 36, 600
+    coords = []
+    for i, (year, total) in enumerate(items):
+        x = (left + (right-left)*i/max(1,len(items)-1)) if len(items)>1 else 320
+        y = 185 - 115*(total-minimum)/span
+        coords.append((x,y,year,total))
+    points = ' '.join(f'{x:.1f},{y:.1f}' for x,y,_,_ in coords)
+    out = ['<div class="trend-highlight"><span>Latest juvenile membership</span><strong>' + f'{items[-1][1]:,}' + '</strong><em>' + str(items[-1][0]) + '</em></div>',
+           '<svg class="report-trend-svg" viewBox="0 0 640 245" role="img" aria-label="Juvenile membership trend by year">']
+    for fraction in (0,.5,1):
+        y = 185-115*fraction
+        out.append(f'<line x1="25" y1="{y:.1f}" x2="620" y2="{y:.1f}" stroke="#d9e8dd" stroke-dasharray="5 5"/>')
+    if len(coords)>1:
+        out.append(f'<polyline points="{points}" fill="none" stroke="#006b43" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>')
+    for x,y,year,total in coords:
+        out.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="7" fill="#e6b72b" stroke="#006b43" stroke-width="3"/>')
+        out.append(f'<text x="{x:.1f}" y="{max(20,y-17):.1f}" text-anchor="middle" font-size="24" font-weight="900" fill="#004b32">{total:,}</text>')
+        out.append(f'<text x="{x:.1f}" y="221" text-anchor="middle" font-size="18" font-weight="800" fill="#345b46">{year}</text>')
+    out.append('</svg>')
+    return ''.join(out)
+
 def render(demo, charts):
     growth = demo.get("growth", {})
     ages = demo.get("age_totals", {})
@@ -73,7 +112,7 @@ def render(demo, charts):
     graphs = [
         ("Juvenile boys & girls", gender_chart),
         ("Players by age group — 3D bars", age_group_3d(ages)),
-        ("Juvenile membership trend", charts["line"](growth)),
+        ("Juvenile membership trend", membership_trend(growth)),
         ("Parish catchment — players by area", catchment_pie(parish_counts)),
         ("Schools represented", charts["horizontal"](schools)),
     ]
@@ -95,7 +134,7 @@ def render(demo, charts):
     .report-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
     .metric{text-align:center;background:linear-gradient(145deg,#f8fff9,#d9efe2);padding:17px 5px;border:1px solid #cbded1;border-top:5px solid #ffca28;border-radius:12px;box-shadow:0 5px 12px #003e2b20}.metric:nth-child(2){background:linear-gradient(145deg,#e5f5e8,#bfe4d0)}.metric:nth-child(3){background:linear-gradient(145deg,#fff9e6,#f4e2b4)}.metric:nth-child(4){background:linear-gradient(145deg,#e5f4f1,#cde8e0)}.report-3d-bars{width:100%;height:auto;display:block}
     .metric strong{display:block;font-size:40px;line-height:1.15;font-weight:900;letter-spacing:-1px;color:#004d32}.metric span{font-size:12px;font-weight:800;text-transform:uppercase}
-    .report-charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
+    .trend-highlight{display:flex;align-items:center;gap:9px;background:linear-gradient(110deg,#005638,#078657);color:white;border-radius:10px;padding:10px 13px}.trend-highlight span{font-size:11px;font-weight:800;flex:1}.trend-highlight strong{font-size:35px;line-height:1;color:#ffe16b}.trend-highlight em{font-size:12px;font-weight:700;font-style:normal}.report-trend-svg{display:block;width:100%;height:auto;margin-top:8px}.report-charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
     .panel{border:1px solid #d8e5de;padding:12px;border-radius:7px;overflow:hidden;min-height:215px}
 .catchment-pie-layout{display:flex;flex-direction:column;align-items:center;gap:8px}.catchment-pie-layout svg{width:75%;max-width:230px;flex:none;filter:drop-shadow(0 6px 4px #003e2b35);transform:scaleY(.84)}.catchment-pie-key{font-size:11px;width:100%}.catchment-legend-heading{font-size:10px;font-weight:900;color:#005638;letter-spacing:1px}.catchment-legend-row{display:flex;align-items:center;gap:7px;padding:4px 0;border-bottom:1px solid #e1ebe5}.catchment-swatch{width:11px;height:11px;flex:none;border-radius:2px}.catchment-area{flex:1}.catchment-pie-key strong{color:#005638;white-space:nowrap}.catchment-total{border-top:1px solid #ddd;padding-top:5px;font-weight:bold} .report-parish-counts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;font-size:11px}.report-parish-counts>div{display:flex;justify-content:space-between;gap:5px;border-bottom:1px solid #e6eee9;padding:3px 0}.report-parish-counts strong{white-space:nowrap;color:#005638}.report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
     @media(max-width:650px){.report-metrics,.report-charts{grid-template-columns:1fr 1fr}.report-identity{padding:20px}}
