@@ -16,11 +16,14 @@ def render(demo, charts):
     boys = int(gender.get("Boys", 0) or 0)
     girls = int(gender.get("Girls", 0) or 0)
     gender_chart = charts["donut"]({"Boys": boys, "Girls": girls}, subtitle="juvenile players") if boys + girls else '<p class="report-no-data">Juvenile boys/girls totals are not available in the current dataset.</p>'
+    parish_counts = {str(k): int(v or 0) for k, v in parish.items()} if isinstance(parish, dict) else {}
+    parish_total = sum(v for v in parish_counts.values() if v > 0)
+    parish_legend = ('<div class="report-parish-counts">' + ''.join(f'<div><span>{escape(name)}</span><strong>{count} · {count/parish_total:.0%}</strong></div>' for name, count in sorted(parish_counts.items(), key=lambda item: -item[1]) if count > 0) + '</div>') if parish_total else '<p class="report-no-data">No parish catchment data available.</p>'
     graphs = [
         ("Juvenile boys & girls", gender_chart),
         ("Players by age group", charts["bar"](ages, 230)),
         ("Juvenile membership trend", charts["line"](growth)),
-        ("Parish catchment", charts["donut"](parish, subtitle="players")),
+        ("Parish catchment — players by area", charts["donut"](parish_counts, subtitle="players") + parish_legend),
         ("Schools represented", charts["horizontal"](schools)),
     ]
     panels = "".join(f'<section class="panel"><h3>{escape(title)}</h3>{graph}</section>' for title, graph in graphs)
@@ -43,7 +46,7 @@ def render(demo, charts):
     .metric strong{display:block;font-size:32px}.metric span{font-size:12px;font-weight:800;text-transform:uppercase}
     .report-charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
     .panel{border:1px solid #d8e5de;padding:12px;border-radius:7px;overflow:hidden;min-height:215px}
-    .report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
+    .report-parish-counts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;font-size:11px}.report-parish-counts>div{display:flex;justify-content:space-between;gap:5px;border-bottom:1px solid #e6eee9;padding:3px 0}.report-parish-counts strong{white-space:nowrap;color:#005638}.report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
     @media(max-width:650px){.report-metrics,.report-charts{grid-template-columns:1fr 1fr}.report-identity{padding:20px}}
     @media print{@page{size:A4;margin:0}.sidebar,.topbar,.report-tools{display:none!important}
     .report-page{width:210mm;height:297mm;min-height:297mm;max-width:none;box-shadow:none;margin:0;break-after:page;page-break-after:always}.report-page:last-of-type{break-after:auto;page-break-after:auto}
