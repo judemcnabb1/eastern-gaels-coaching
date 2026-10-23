@@ -6,21 +6,21 @@ def age_group_3d(ages):
     if not items:
         return '<p>No age-group figures available.</p>'
     maximum = max(1, *(v for _, v in items))
-    step = 600 / len(items)
-    width = min(48, step * .55)
-    shapes = ['<svg class="report-3d-bars" viewBox="0 0 660 290" role="img" aria-label="Players by age group">']
+    step = 620 / len(items)
+    width = min(70, step * .78)
+    shapes = ['<svg class="report-3d-bars" viewBox="0 0 660 260" role="img" aria-label="Players by age group">']
     for i, (label, value) in enumerate(items):
-        x = 38 + i * step + (step - width) / 2
-        h = 170 * value / maximum
-        y = 228 - h
+        x = 15 + i * step + (step - width) / 2
+        h = 194 * value / maximum
+        y = 222 - h
         front = '#087f4a' if i % 2 == 0 else '#e8ae25'
         side = '#005b37' if i % 2 == 0 else '#a77b0c'
         top = '#57c891' if i % 2 == 0 else '#f8d86b'
         shapes.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{h:.1f}" fill="{front}"/>')
-        shapes.append(f'<polygon points="{x+width:.1f},{y:.1f} {x+width+12:.1f},{y-12:.1f} {x+width+12:.1f},216 {x+width:.1f},228" fill="{side}"/>')
+        shapes.append(f'<polygon points="{x+width:.1f},{y:.1f} {x+width+12:.1f},{y-12:.1f} {x+width+12:.1f},210 {x+width:.1f},222" fill="{side}"/>')
         shapes.append(f'<polygon points="{x:.1f},{y:.1f} {x+12:.1f},{y-12:.1f} {x+width+12:.1f},{y-12:.1f} {x+width:.1f},{y:.1f}" fill="{top}"/>')
         shapes.append(f'<text x="{x+width/2:.1f}" y="{max(15,y-17):.1f}" text-anchor="middle" font-size="17" font-weight="800" fill="#005638">{value}</text>')
-        shapes.append(f'<text x="{x+width/2:.1f}" y="257" text-anchor="middle" font-size="14" font-weight="700" fill="#285440">{escape(label)}</text>')
+        shapes.append(f'<text x="{x+width/2:.1f}" y="249" text-anchor="middle" font-size="14" font-weight="700" fill="#285440">{escape(label)}</text>')
     return ''.join(shapes) + '</svg>'
 
 def catchment_pie(counts):
@@ -132,7 +132,7 @@ def render(demo, charts):
     .report-footer{background:#005638;color:#fff;text-align:center;padding:16px;letter-spacing:2px;font-size:12px;font-weight:700}
     .report-body{padding:26px 28px 20px}.report-body h2{color:#004b32}
     .report-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-    .metric{text-align:center;background:linear-gradient(145deg,#f8fff9,#d9efe2);padding:17px 5px;border:1px solid #cbded1;border-top:5px solid #ffca28;border-radius:12px;box-shadow:0 5px 12px #003e2b20}.metric:nth-child(2){background:linear-gradient(145deg,#e5f5e8,#bfe4d0)}.metric:nth-child(3){background:linear-gradient(145deg,#fff9e6,#f4e2b4)}.metric:nth-child(4){background:linear-gradient(145deg,#e5f4f1,#cde8e0)}.report-3d-bars{width:100%;height:auto;display:block}
+    .metric{text-align:center;background:linear-gradient(145deg,#f8fff9,#d9efe2);padding:17px 5px;border:1px solid #cbded1;border-top:5px solid #ffca28;border-radius:12px;box-shadow:0 5px 12px #003e2b20}.metric:nth-child(2){background:linear-gradient(145deg,#e5f5e8,#bfe4d0)}.metric:nth-child(3){background:linear-gradient(145deg,#fff9e6,#f4e2b4)}.metric:nth-child(4){background:linear-gradient(145deg,#e5f4f1,#cde8e0)}.report-3d-bars{width:100%;height:auto;display:block;max-width:none}
     .metric strong{display:block;font-size:40px;line-height:1.15;font-weight:900;letter-spacing:-1px;color:#004d32}.metric span{font-size:12px;font-weight:800;text-transform:uppercase}
     .trend-highlight{display:flex;align-items:center;gap:9px;background:linear-gradient(110deg,#005638,#078657);color:white;border-radius:10px;padding:10px 13px}.trend-highlight span{font-size:11px;font-weight:800;flex:1}.trend-highlight strong{font-size:35px;line-height:1;color:#ffe16b}.trend-highlight em{font-size:12px;font-weight:700;font-style:normal}.report-trend-svg{display:block;width:100%;height:auto;margin-top:8px}.report-charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
     .panel{border:1px solid #d8e5de;padding:12px;border-radius:7px;overflow:hidden;min-height:215px}
