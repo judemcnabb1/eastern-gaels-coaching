@@ -1,6 +1,28 @@
 """Printable Eastern Gaels demographics report, using the dashboard's live DEMO data."""
 from html import escape
 
+def age_group_3d(ages):
+    items = [(str(k), max(0, int(v or 0))) for k, v in ages.items()]
+    if not items:
+        return '<p>No age-group figures available.</p>'
+    maximum = max(1, *(v for _, v in items))
+    step = 600 / len(items)
+    width = min(48, step * .55)
+    shapes = ['<svg class="report-3d-bars" viewBox="0 0 660 290" role="img" aria-label="Players by age group">']
+    for i, (label, value) in enumerate(items):
+        x = 38 + i * step + (step - width) / 2
+        h = 170 * value / maximum
+        y = 228 - h
+        front = '#087f4a' if i % 2 == 0 else '#e8ae25'
+        side = '#005b37' if i % 2 == 0 else '#a77b0c'
+        top = '#57c891' if i % 2 == 0 else '#f8d86b'
+        shapes.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{h:.1f}" fill="{front}"/>')
+        shapes.append(f'<polygon points="{x+width:.1f},{y:.1f} {x+width+12:.1f},{y-12:.1f} {x+width+12:.1f},216 {x+width:.1f},228" fill="{side}"/>')
+        shapes.append(f'<polygon points="{x:.1f},{y:.1f} {x+12:.1f},{y-12:.1f} {x+width+12:.1f},{y-12:.1f} {x+width:.1f},{y:.1f}" fill="{top}"/>')
+        shapes.append(f'<text x="{x+width/2:.1f}" y="{max(15,y-17):.1f}" text-anchor="middle" font-size="17" font-weight="800" fill="#005638">{value}</text>')
+        shapes.append(f'<text x="{x+width/2:.1f}" y="257" text-anchor="middle" font-size="14" font-weight="700" fill="#285440">{escape(label)}</text>')
+    return ''.join(shapes) + '</svg>'
+
 def render(demo, charts):
     growth = demo.get("growth", {})
     ages = demo.get("age_totals", {})
@@ -21,7 +43,7 @@ def render(demo, charts):
     parish_legend = ('<div class="report-parish-counts">' + ''.join(f'<div><span>{escape(name)}</span><strong>{count} · {count/parish_total:.0%}</strong></div>' for name, count in sorted(parish_counts.items(), key=lambda item: -item[1]) if count > 0) + '</div>') if parish_total else '<p class="report-no-data">No parish catchment data available.</p>'
     graphs = [
         ("Juvenile boys & girls", gender_chart),
-        ("Players by age group", charts["bar"](ages, 230)),
+        ("Players by age group — 3D bars", age_group_3d(ages)),
         ("Juvenile membership trend", charts["line"](growth)),
         ("Parish catchment — players by area", charts["donut"](parish_counts, subtitle="players") + parish_legend),
         ("Schools represented", charts["horizontal"](schools)),
@@ -42,8 +64,8 @@ def render(demo, charts):
     .report-footer{background:#005638;color:#fff;text-align:center;padding:16px;letter-spacing:2px;font-size:12px;font-weight:700}
     .report-body{padding:26px 28px 20px}.report-body h2{color:#004b32}
     .report-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-    .metric{text-align:center;background:#edf5ef;padding:17px 5px;border-top:4px solid #ffca28}
-    .metric strong{display:block;font-size:32px}.metric span{font-size:12px;font-weight:800;text-transform:uppercase}
+    .metric{text-align:center;background:linear-gradient(145deg,#f8fff9,#d9efe2);padding:17px 5px;border:1px solid #cbded1;border-top:5px solid #ffca28;border-radius:12px;box-shadow:0 5px 12px #003e2b20}.metric:nth-child(2){background:linear-gradient(145deg,#e5f5e8,#bfe4d0)}.metric:nth-child(3){background:linear-gradient(145deg,#fff9e6,#f4e2b4)}.metric:nth-child(4){background:linear-gradient(145deg,#e5f4f1,#cde8e0)}.report-3d-bars{width:100%;height:auto;display:block}
+    .metric strong{display:block;font-size:40px;line-height:1.15;font-weight:900;letter-spacing:-1px;color:#004d32}.metric span{font-size:12px;font-weight:800;text-transform:uppercase}
     .report-charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
     .panel{border:1px solid #d8e5de;padding:12px;border-radius:7px;overflow:hidden;min-height:215px}
     .report-parish-counts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;font-size:11px}.report-parish-counts>div{display:flex;justify-content:space-between;gap:5px;border-bottom:1px solid #e6eee9;padding:3px 0}.report-parish-counts strong{white-space:nowrap;color:#005638}.report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
