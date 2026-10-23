@@ -10,6 +10,8 @@ _original_page = app.page
 def page_with_reports(title, body, user=None):
     if title == "Dashboard" and user:
         body = '<div class="actions"><a class="btn" href="/reports/demographics">Open Demographics Report →</a></div>' + body
+    if title == 'Reports' and user:
+        body = '<div class="actions"><a class="btn" href="/reports/demographics">Open Demographics Report →</a></div>' + body
     html = _original_page(title, body, user)
     if user:
         html = html.replace('<span>Reports</span></a>', '<span>Reports Centre</span></a>')
@@ -20,16 +22,23 @@ app.page = page_with_reports
 class ReportHandler(app.H):
     def do_GET(self):
         path = app.urlparse(self.path).path
-        if path == '/report-pitch.png':
-            filename = os.path.join(app.BASE, 'report-pitch.png')
+        report_assets = {
+            '/report-pitch.png': ('report-pitch.png', 'image/png'),
+            '/report-eastern-gaels.jpg': ('report-eastern-gaels.jpg', 'image/jpeg'),
+            '/report-meath.png': ('report-meath.png', 'image/png'),
+        }
+        if path in report_assets:
+            name, mime = report_assets[path]
+            filename = os.path.join(app.BASE, name)
             if not os.path.isfile(filename):
-                self.send_error(404, 'Pitch image not yet uploaded')
+                self.send_error(404, 'Report asset not yet uploaded')
                 return
             with open(filename, 'rb') as stream:
                 data = stream.read()
             self.send_response(200)
-            self.send_header('Content-Type', 'image/png')
+            self.send_header('Content-Type', mime)
             self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'public, max-age=3600')
             self.end_headers()
             self.wfile.write(data)
             return
