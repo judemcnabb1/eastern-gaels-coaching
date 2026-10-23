@@ -20,6 +20,19 @@ app.page = page_with_reports
 class ReportHandler(app.H):
     def do_GET(self):
         path = app.urlparse(self.path).path
+        if path == '/report-pitch.png':
+            filename = os.path.join(app.BASE, 'report-pitch.png')
+            if not os.path.isfile(filename):
+                self.send_error(404, 'Pitch image not yet uploaded')
+                return
+            with open(filename, 'rb') as stream:
+                data = stream.read()
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/png')
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if path == '/reports/demographics':
             user = self.need()
             if not user:
