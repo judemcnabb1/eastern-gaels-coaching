@@ -66,7 +66,7 @@ def render(demo, charts):
     gender = demo.get("juvenile_gender", {}) or {}
     boys = int(gender.get("Boys", 0) or 0)
     girls = int(gender.get("Girls", 0) or 0)
-    gender_chart = charts["donut"]({"Boys": boys, "Girls": girls}, subtitle="juvenile players") if boys + girls else '<p class="report-no-data">Juvenile boys/girls totals are not available in the current dataset.</p>'
+    gender_chart = catchment_pie({"Boys": boys, "Girls": girls}) if boys + girls else '<p class="report-no-data">Juvenile boys/girls totals are not available in the current dataset.</p>'
     parish_counts = {str(k): int(v or 0) for k, v in parish.items()} if isinstance(parish, dict) else {}
     parish_total = sum(v for v in parish_counts.values() if v > 0)
     parish_legend = ('<div class="report-parish-counts">' + ''.join(f'<div><span>{escape(name)}</span><strong>{count} · {count/parish_total:.0%}</strong></div>' for name, count in sorted(parish_counts.items(), key=lambda item: -item[1]) if count > 0) + '</div>') if parish_total else '<p class="report-no-data">No parish catchment data available.</p>'
