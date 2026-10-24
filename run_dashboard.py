@@ -11,7 +11,7 @@ _original_page = app.page
 
 def page_with_reports(title, body, user=None):
     if title == "Dashboard" and user:
-        body = '<div class="actions"><a class="btn" href="/reports/demographics">Open Demographics Report →</a></div>' + body
+        body = '<div class="actions"><a class="btn" href="/reports/demographics">Open Demographics Report →</a> <a class="btn" href="/reports/demographics/styled.pdf">Download Demographics PDF ↓</a></div>' + body
     if title == 'Reports' and user:
         body = '<div class="actions"><a class="btn" href="/reports/demographics">Open Demographics Report →</a></div>' + body
     html = _original_page(title, body, user)
