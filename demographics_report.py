@@ -143,8 +143,24 @@ def render(demo, charts):
 .catchment-pie-layout{display:flex;flex-direction:column;align-items:center;gap:8px}.catchment-pie-layout svg{width:75%;max-width:230px;flex:none;filter:drop-shadow(0 6px 4px #003e2b35);transform:scaleY(.84)}.catchment-pie-key{font-size:11px;width:100%}.catchment-legend-heading{font-size:10px;font-weight:900;color:#005638;letter-spacing:1px}.catchment-legend-row{display:flex;align-items:center;gap:7px;padding:4px 0;border-bottom:1px solid #e1ebe5}.catchment-swatch{width:11px;height:11px;flex:none;border-radius:2px}.catchment-area{flex:1}.catchment-pie-key strong{color:#005638;white-space:nowrap}.catchment-total{border-top:1px solid #ddd;padding-top:5px;font-weight:bold} .report-parish-counts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;font-size:11px}.report-parish-counts>div{display:flex;justify-content:space-between;gap:5px;border-bottom:1px solid #e6eee9;padding:3px 0}.report-parish-counts strong{white-space:nowrap;color:#005638}.report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
     @media(max-width:650px){.report-metrics,.report-charts{grid-template-columns:1fr 1fr}.report-identity{padding:20px}}
     @media print{.report-charts{gap:8px;margin-top:12px}.panel{padding:8px;min-height:0}.panel h3{font-size:13px;margin:4px 0}.catchment-pie-layout svg{max-width:145px}.catchment-legend-row{padding:2px 0}.report-body{padding:18px 24px 12px}.report-heading{margin-bottom:10px}.metric{padding:10px 4px}.metric strong{font-size:31px}.report-trend-svg{max-height:145px}.report-3d-bars{max-height:145px}
-    @page{size:A4;margin:0}.sidebar,.topbar,.report-tools{display:none!important}
-    .report-page{width:210mm;height:297mm;min-height:297mm;max-width:none;box-shadow:none;margin:0;break-after:page;page-break-after:always}.report-page:last-of-type{break-after:auto;page-break-after:auto}
+    @page{size:A4;margin:8mm}
+    html,body{margin:0!important;padding:0!important;width:auto!important;background:#fff!important}
+    .sidebar,.topbar,.report-tools{display:none!important}
+    .report-page{box-sizing:border-box!important;width:194mm!important;height:281mm!important;min-height:0!important;max-height:281mm!important;max-width:none!important;box-shadow:none!important;margin:0!important;padding:0!important;overflow:hidden!important;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
+    .report-page:last-of-type{break-after:auto;page-break-after:auto}
+    .report-final-cover{height:calc(281mm - 22px)!important;min-height:0!important;max-height:100%!important;overflow:hidden}
+    .report-final-art{width:100%;max-height:100%}
+    .report-final-cover img{max-height:calc(281mm - 22px);width:100%;object-fit:contain}
+    .report-body{box-sizing:border-box;padding:12px 16px 8px!important}
+    .report-charts{gap:6px!important;margin-top:8px!important}
+    .panel{padding:6px!important;min-height:0!important;break-inside:avoid}
+    .panel h3{font-size:12px!important;margin:3px 0!important}
+    .catchment-pie-layout svg{max-width:125px!important}
+    .catchment-legend-row{padding:1px 0!important}
+    .report-heading{margin-bottom:8px!important}
+    .metric{padding:7px 3px!important}
+    .metric strong{font-size:28px!important}
+    .report-trend-svg,.report-3d-bars{max-height:120px!important}
     *{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
     </style>"""
     # Asset URLs are supplied by the main application when the official files are installed.
