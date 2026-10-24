@@ -149,11 +149,12 @@ def render(demo, charts):
     main{display:block!important;margin:0!important;padding:0!important;width:100%!important;max-width:none!important;min-height:0!important;overflow:visible!important}
     body{display:block!important;overflow:visible!important}
     .report-page:first-of-type{break-before:auto!important;page-break-before:auto!important}
-    .report-page{box-sizing:border-box!important;width:100%!important;height:273mm!important;min-height:0!important;max-height:273mm!important;max-width:none!important;box-shadow:none!important;margin:0 auto!important;padding:0!important;overflow:hidden!important;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
+    .report-page{box-sizing:border-box!important;width:174mm!important;height:273mm!important;min-height:0!important;max-height:273mm!important;max-width:174mm!important;box-shadow:none!important;margin:0 auto!important;padding:0!important;overflow:hidden!important;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
     .report-page:last-of-type{break-after:auto;page-break-after:auto}
     .report-final-cover{display:block!important;height:calc(273mm - 22px)!important;min-height:0!important;max-height:calc(273mm - 22px)!important;overflow:hidden!important}
     .report-final-art{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;max-height:none!important;margin:0!important;padding:0!important;overflow:hidden!important}
     .report-final-cover img{display:block!important;width:100%!important;max-width:100%!important;height:auto!important;max-height:none!important;margin:0!important;object-fit:contain!important}
+    .report-page *{box-sizing:border-box!important}
     .report-body{box-sizing:border-box;width:100%!important;max-width:100%!important;padding:12px 18px 8px!important}
     .report-heading{min-width:0!important;gap:8px!important}
     .report-heading>div:first-child{min-width:0!important;flex:1 1 auto!important}
