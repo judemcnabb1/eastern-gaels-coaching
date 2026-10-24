@@ -131,7 +131,7 @@ def render(demo, charts):
     .report-cover-title h1{font-size:clamp(42px,7vw,64px);line-height:1.1;color:#004b32;margin:0}
     .report-cover-title h2{font-size:38px;color:#004b32}
     .report-cover-title p{font-size:20px;font-style:italic}
-    .report-final-cover{display:flex;align-items:center;justify-content:center;background:#004b32;min-height:1058px}.report-final-art{position:relative;width:100%;line-height:0}.report-final-cover img{display:block;width:100%;height:auto;object-fit:contain}.report-cover-year{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}    .report-photo{height:445px;background:linear-gradient(0deg,#003e2baa,transparent 65%),url('/report-demographics-cover.png') center/cover no-repeat}
+    .report-final-cover{display:flex;align-items:flex-start;justify-content:flex-start;background:#004b32;min-height:1058px;overflow:hidden}.report-final-art{position:relative;width:100%;max-width:100%;min-width:0;flex:0 0 100%;line-height:0;overflow:hidden}.report-final-cover img{display:block;width:100%;max-width:100%;height:auto;object-fit:contain}.report-cover-year{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}    .report-photo{height:445px;background:linear-gradient(0deg,#003e2baa,transparent 65%),url('/report-demographics-cover.png') center/cover no-repeat}
     .report-jersey{height:200px;background:url('/report-jersey.jpg') center/contain no-repeat}
     .report-footer{background:#005638;color:#fff;text-align:center;padding:16px;letter-spacing:2px;font-size:12px;font-weight:700}
     .report-body{padding:26px 28px 20px}.report-body h2{color:#004b32}
@@ -148,9 +148,9 @@ def render(demo, charts):
     .sidebar,.topbar,.report-tools{display:none!important}
     .report-page{box-sizing:border-box!important;width:194mm!important;height:281mm!important;min-height:0!important;max-height:281mm!important;max-width:none!important;box-shadow:none!important;margin:0!important;padding:0!important;overflow:hidden!important;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
     .report-page:last-of-type{break-after:auto;page-break-after:auto}
-    .report-final-cover{height:calc(281mm - 22px)!important;min-height:0!important;max-height:100%!important;overflow:hidden}
-    .report-final-art{width:100%;max-height:100%}
-    .report-final-cover img{max-height:calc(281mm - 22px);width:100%;object-fit:contain}
+    .report-final-cover{display:block!important;height:calc(281mm - 22px)!important;min-height:0!important;max-height:calc(281mm - 22px)!important;overflow:hidden!important}
+    .report-final-art{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;max-height:none!important;margin:0!important;padding:0!important;overflow:hidden!important}
+    .report-final-cover img{display:block!important;width:100%!important;max-width:100%!important;height:auto!important;max-height:none!important;margin:0!important;object-fit:contain!important}
     .report-body{box-sizing:border-box;padding:12px 16px 8px!important}
     .report-charts{gap:6px!important;margin-top:8px!important}
     .panel{padding:6px!important;min-height:0!important;break-inside:avoid}
