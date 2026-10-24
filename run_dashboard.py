@@ -52,7 +52,7 @@ class ReportHandler(app.H):
             user = self.need()
             if not user:
                 return
-            c = app.conn()
+            c = app.dbc()
             try:
                 where, args = self.vis(user)
                 rows = c.execute('select * from sessions ' + where + ' order by date,start', args).fetchall()
