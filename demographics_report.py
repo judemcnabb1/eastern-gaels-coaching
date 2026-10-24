@@ -115,9 +115,9 @@ def render(demo, charts):
     graphs = [
         ("Juvenile boys & girls", gender_chart),
         ("Senior adult men & women — 3D pie", senior_chart),
-        ("Players by age group — 3D bars", age_group_3d(ages)),
+        ("Juvenile Players by age group", age_group_3d(ages)),
         ("Juvenile membership trend", membership_trend(growth)),
-        ("Parish catchment — players by area", catchment_pie(parish_counts)),
+        ("Parish Catchment — Juvenile players by area", catchment_pie(parish_counts)),
         ("Schools represented", charts["horizontal"](schools)),
     ]
     panels = "".join(f'<section class="panel"><h3>{escape(title)}</h3>{graph}</section>' for title, graph in graphs)
