@@ -145,7 +145,10 @@ def render(demo, charts):
     @media print{.report-charts{gap:8px;margin-top:12px}.panel{padding:8px;min-height:0}.panel h3{font-size:13px;margin:4px 0}.catchment-pie-layout svg{max-width:145px}.catchment-legend-row{padding:2px 0}.report-body{padding:18px 24px 12px}.report-heading{margin-bottom:10px}.metric{padding:10px 4px}.metric strong{font-size:31px}.report-trend-svg{max-height:145px}.report-3d-bars{max-height:145px}
     @page{size:A4;margin:8mm}
     html,body{margin:0!important;padding:0!important;width:auto!important;background:#fff!important}
-    .sidebar,.topbar,.report-tools{display:none!important}
+    .sidebar,.topbar,.report-tools,body>header,header{display:none!important}
+    main{display:block!important;margin:0!important;padding:0!important;width:100%!important;max-width:none!important;min-height:0!important;overflow:visible!important}
+    body{display:block!important;overflow:visible!important}
+    .report-page:first-of-type{break-before:auto!important;page-break-before:auto!important}
     .report-page{box-sizing:border-box!important;width:194mm!important;height:281mm!important;min-height:0!important;max-height:281mm!important;max-width:none!important;box-shadow:none!important;margin:0!important;padding:0!important;overflow:hidden!important;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
     .report-page:last-of-type{break-after:auto;page-break-after:auto}
     .report-final-cover{display:block!important;height:calc(281mm - 22px)!important;min-height:0!important;max-height:calc(281mm - 22px)!important;overflow:hidden!important}
