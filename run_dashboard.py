@@ -84,7 +84,7 @@ class ReportHandler(app.H):
               .report-charts{grid-template-columns:repeat(2,minmax(0,1fr))!important}
               .report-metrics{grid-template-columns:repeat(4,minmax(0,1fr))!important}
             }
-            </style></head><body>""" + report + "</body></html>"
+            </style></head><body>""" + report.replace("</style>", "</style>" + """<style media="print">\n            @page{size:A4;margin:0!important}\n            .report-page{width:210mm!important;max-width:210mm!important;height:297mm!important;min-height:297mm!important;max-height:297mm!important;margin:0!important;padding:12mm!important;break-after:page!important;page-break-after:always!important}\n            .report-page:last-of-type{break-after:auto!important;page-break-after:auto!important}\n            .report-final-cover{height:268mm!important;min-height:0!important;max-height:268mm!important}\n            .report-final-cover img{width:100%!important;max-width:100%!important}\n            </style>""", 1) + "</body></html>"
             return self.out(isolated)
         if path == '/reports/demographics':
             user = self.need()
