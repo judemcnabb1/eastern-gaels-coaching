@@ -46,8 +46,19 @@ def build_styled_pdf(demo, charts, base):
     .report-heading h2 {font-size:18px!important}
     .report-heading {margin-bottom:8px!important}
     .report-mini-identity img {width:36px!important;height:44px!important}
-    .catchment-pie-layout svg {max-width:125px!important}
-    .catchment-legend-row {padding:1px 0!important}
+    /* Fit the pie and every legend item side by side, not stacked off the panel bottom. */
+    .catchment-pie-layout {display:flex!important;flex-direction:row!important;
+      align-items:center!important;gap:7px!important;width:100%!important}
+    .catchment-pie-layout svg {width:42%!important;max-width:108px!important;
+      min-width:0!important;flex:0 0 42%!important;transform:none!important}
+    .catchment-pie-key {width:56%!important;min-width:0!important;font-size:9px!important}
+    .catchment-area {min-width:0!important;overflow-wrap:anywhere!important}
+    .catchment-legend-row {gap:3px!important;font-size:9px!important}
+    .catchment-swatch {width:7px!important;height:7px!important}
+    .catchment-total {font-size:9px!important;padding-top:2px!important}
+    .report-charts {margin-top:9px!important}
+    .report-footer {margin-top:3px!important}
+    .catchment-legend-row {padding:2px 0!important}
     .panel h3 {font-size:11px!important;margin:2px 0!important}
     .report-trend-svg,.report-3d-bars {max-height:125px!important}
     .metric {padding:6px 2px!important}
