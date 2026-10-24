@@ -5,6 +5,7 @@ from http.server import ThreadingHTTPServer
 import eastern_gaels_v7 as app
 from demographics_report import render
 from demographics_pdf import build_pdf
+from demographics_styled_pdf import build_styled_pdf
 
 _original_page = app.page
 
@@ -43,6 +44,29 @@ class ReportHandler(app.H):
             self.send_header('Content-Type', mime)
             self.send_header('Content-Length', str(len(data)))
             self.send_header('Cache-Control', 'public, max-age=3600')
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if path == '/reports/demographics/styled.pdf':
+            user = self.need()
+            if not user:
+                return
+            charts = {
+                'bar': app.svg_bar_chart,
+                'line': app.svg_line_area,
+                'donut': app.donut_chart,
+                'horizontal': app.hbar_chart,
+            }
+            try:
+                data = build_styled_pdf(app.DEMO, charts, app.BASE)
+            except Exception as exc:
+                self.send_error(503, 'Styled PDF generation unavailable: ' + str(exc)[:140])
+                return
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/pdf')
+            self.send_header('Content-Disposition', 'attachment; filename="Eastern-Gaels-Demographics-Styled.pdf"')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'no-store')
             self.end_headers()
             self.wfile.write(data)
             return
