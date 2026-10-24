@@ -1,6 +1,21 @@
 """Printable Eastern Gaels demographics report, using the dashboard's live DEMO data."""
 from html import escape
 
+def schools_two_columns(schools):
+    """Compact two-column school counts shared by the dashboard report and PDF."""
+    items = [(str(k), max(0, int(v or 0))) for k, v in schools.items()]
+    items.sort(key=lambda item: (-item[1], item[0]))
+    midpoint = (len(items) + 1) // 2
+    columns = []
+    for group in (items[:midpoint], items[midpoint:]):
+        rows = ''.join(
+            '<div class="school-pdf-row"><span>' + escape(name) +
+            '</span><strong>' + str(count) + '</strong></div>'
+            for name, count in group
+        )
+        columns.append('<div class="school-pdf-col">' + rows + '</div>')
+    return '<div class="school-pdf-grid">' + ''.join(columns) + '</div>'
+
 def age_group_3d(ages):
     items = [(str(k), max(0, int(v or 0))) for k, v in ages.items()]
     if not items:
@@ -118,10 +133,16 @@ def render(demo, charts):
         ("Juvenile Players by age group", age_group_3d(ages)),
         ("Juvenile membership trend", membership_trend(growth)),
         ("Parish Catchment — Juvenile players by area", catchment_pie(parish_counts)),
-        ("Schools represented", charts["horizontal"](schools)),
+        ("Schools represented", schools_two_columns(schools)),
     ]
     panels = "".join(f'<section class="panel"><h3>{escape(title)}</h3>{graph}</section>' for title, graph in graphs)
     css = """<style>
+    .school-pdf-grid{display:flex;gap:9px;width:100%;margin-top:8px}
+    .school-pdf-col{width:50%;min-width:0}
+    .school-pdf-row{display:flex;justify-content:space-between;gap:4px;
+      border-bottom:1px solid #e0ece5;padding:5px 0;font-size:11px;line-height:1.2;color:#005638}
+    .school-pdf-row span{overflow-wrap:anywhere;min-width:0}
+    .school-pdf-row strong{flex:none;color:#005638}
     .report-tools{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}
     .report-page{background:#fff;color:#064630;max-width:840px;min-height:1080px;margin:20px auto;box-shadow:0 5px 25px #0002;overflow:hidden}
     .report-accent{height:22px;background:linear-gradient(110deg,#005638 0 65%,#ffca28 65% 80%,#005638 80%)}
