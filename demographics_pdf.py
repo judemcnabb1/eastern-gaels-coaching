@@ -93,18 +93,62 @@ def build_pdf(demo, base):
             pct=f" ({value/total:.0%})" if total else ""
             c.drawRightString(x+pw-12,yy,str(value)+pct)
         c.setFont("Helvetica-Bold",8);c.drawString(x+12,y+12,f"Total: {total}")
+    def pie(items,x,y,top):
+        import math
+        items=[(name,int(value)) for name,value in items if int(value)>0]
+        total=sum(value for _,value in items)
+        if not total:
+            return
+        palette=[GREEN,GOLD,HexColor("#16a66a"),HexColor("#66b6a2"),HexColor("#b6811e"),HexColor("#7c9690")]
+        cx=x+pw/2
+        cy=top-74
+        radius=44
+        # Offset lower slices slightly to recreate the original 3D pie appearance.
+        start=90
+        for i,(name,value) in enumerate(items):
+            extent=360*value/total
+            c.setFillColor(HexColor("#365d4c") if i%2==0 else HexColor("#b28a28"))
+            c.wedge(cx-radius,cy-radius-5,cx+radius,cy+radius-5,start,start+extent,stroke=0,fill=1)
+            start+=extent
+        start=90
+        for i,(name,value) in enumerate(items):
+            extent=360*value/total
+            c.setFillColor(palette[i%len(palette)])
+            c.wedge(cx-radius,cy-radius,cx+radius,cy+radius,start,start+extent,stroke=1,fill=1)
+            angle=math.radians(start+extent/2)
+            lx=cx+radius*.64*math.cos(angle)
+            ly=cy+radius*.64*math.sin(angle)
+            if extent>20:
+                c.setFillColor(HexColor("#ffffff"))
+                c.setFont("Helvetica-Bold",6)
+                c.drawCentredString(lx,ly,f"{value/total:.0%}")
+            start+=extent
+        # Compact original-style area legend beneath the pie.
+        c.setFillColor(GREEN);c.setFont("Helvetica-Bold",7)
+        c.drawString(x+10,y+49,"AREA LEGEND")
+        count=min(len(items),4)
+        for i,(name,value) in enumerate(items[:count]):
+            yy=y+36-i*10
+            c.setFillColor(palette[i%len(palette)])
+            c.rect(x+10,yy-1,6,6,stroke=0,fill=1)
+            c.setFillColor(GREEN);c.setFont("Helvetica",6.6)
+            c.drawString(x+20,yy,str(name)[:24])
+            c.setFont("Helvetica-Bold",6.6)
+            c.drawRightString(x+pw-9,yy,f"{value} ({value/total:.1%})")
+        c.setFont("Helvetica-Bold",7)
+        c.drawString(x+10,y+4,f"Total: {total} players")
     gender=demo.get("juvenile_gender",{}) or {}
     x,y,t=panel(0,0,"Juvenile boys & girls")
-    breakdown([("Boys",int(gender.get("Boys",0) or 0)),("Girls",int(gender.get("Girls",0) or 0))],x,y,t)
+    pie([("Boys",int(gender.get("Boys",0) or 0)),("Girls",int(gender.get("Girls",0) or 0))],x,y,t)
     x,y,t=panel(1,0,"Senior adult men & women")
-    breakdown([("Senior men",int(demo.get("senior_adult_mens_count",0) or 0)),("Senior women",int(demo.get("senior_adult_ladies_count",0) or 0))],x,y,t)
+    pie([("Senior men",int(demo.get("senior_adult_mens_count",0) or 0)),("Senior women",int(demo.get("senior_adult_ladies_count",0) or 0))],x,y,t)
     x,y,t=panel(0,1,"Players by age group")
     bars([(str(k),int(v or 0)) for k,v in ages.items()],x,y,t,limit=12)
     x,y,t=panel(1,1,"Juvenile membership trend")
     bars([(str(k),int(growth[k] or 0)) for k in years],x,y,t)
     x,y,t=panel(0,2,"Parish catchment")
     parish=demo.get("catchment",{}) or {}
-    breakdown(sorted([(str(k),int(v or 0)) for k,v in parish.items()],key=lambda p:-p[1]),x,y,t)
+    pie(sorted([(str(k),int(v or 0)) for k,v in parish.items()],key=lambda p:-p[1]),x,y,t)
     x,y,t=panel(1,2,"Schools represented")
     schools=demo.get("school_totals",{}) or {}
     breakdown(sorted([(str(k),int(v or 0)) for k,v in schools.items()],key=lambda p:-p[1]),x,y,t)
