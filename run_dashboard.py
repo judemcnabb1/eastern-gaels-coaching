@@ -48,6 +48,32 @@ class ReportHandler(app.H):
             self.end_headers()
             self.wfile.write(data)
             return
+        if path in ('/reports/schools', '/reports/schools/styled.pdf'):
+            user = self.need()
+            if not user:
+                return
+            c = app.conn()
+            try:
+                where, args = self.vis(user)
+                rows = c.execute('select * from sessions ' + where + ' order by date,start', args).fetchall()
+            finally:
+                c.close()
+            data = schools_summary(rows)
+            if path.endswith('.pdf'):
+                try:
+                    content = schools_pdf(data, app.BASE)
+                except Exception as exc:
+                    self.send_error(503, 'Schools PDF unavailable: ' + str(exc)[:140])
+                    return
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/pdf')
+                self.send_header('Content-Disposition', 'attachment; filename="Eastern-Gaels-Schools-Demographics-2026-2027.pdf"')
+                self.send_header('Content-Length', str(len(content)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                self.wfile.write(content)
+                return
+            return self.out(app.page('Schools Demographics Report', render_schools(data), user))
         if path == '/reports/demographics/styled.pdf':
             user = self.need()
             if not user:
