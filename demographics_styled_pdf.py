@@ -58,6 +58,14 @@ def build_styled_pdf(demo, charts, base):
     .catchment-total {font-size:9px!important;padding-top:2px!important}
     .report-charts {margin-top:9px!important}
     .report-footer {margin-top:3px!important}
+    /* School chart is a long horizontal-bar SVG: show the entire chart
+       instead of clipping it to the fixed panel height. */
+    .report-charts>.panel:last-child {overflow:visible!important}
+    .report-charts>.panel:last-child svg {width:100%!important;height:auto!important;
+      max-height:155px!important;display:block!important}
+    .report-charts>.panel:last-child h3 {margin-bottom:1px!important}
+    .report-charts>.panel:last-child {padding:4px!important}
+    .report-charts>.panel:nth-last-child(2) {padding:4px!important}
     .catchment-legend-row {padding:2px 0!important}
     .panel h3 {font-size:11px!important;margin:2px 0!important}
     .report-trend-svg,.report-3d-bars {max-height:125px!important}
