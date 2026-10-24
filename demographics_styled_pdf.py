@@ -46,7 +46,10 @@ def build_styled_pdf(demo, charts, base):
       box-shadow:none!important;break-after:page!important;page-break-after:always!important}
     .report-page:last-of-type {break-after:auto!important;page-break-after:auto!important}
     .report-accent {height:5mm!important}
-    .report-final-cover {height:268mm!important;min-height:0!important;max-height:268mm!important}
+    .report-final-cover {height:268mm!important;min-height:0!important;max-height:268mm!important;
+      display:flex!important;flex-direction:column!important;justify-content:center!important;
+      align-items:center!important;background:#004b32!important}
+    .report-final-art {flex:none!important;align-self:center!important}
     .report-final-art {width:100%!important}
     .report-final-cover img {width:100%!important;max-width:100%!important;height:auto!important}
     .report-final-cover::before,.report-final-cover::after {display:none!important}
