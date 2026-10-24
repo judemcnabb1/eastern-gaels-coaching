@@ -45,6 +45,47 @@ class ReportHandler(app.H):
             self.end_headers()
             self.wfile.write(data)
             return
+        if path == '/reports/demographics/print':
+            user = self.need()
+            if not user:
+                return
+            charts = {
+                'bar': app.svg_bar_chart,
+                'line': app.svg_line_area,
+                'donut': app.donut_chart,
+                'horizontal': app.hbar_chart,
+            }
+            report = render(app.DEMO, charts)
+            # Render in an isolated document: the dashboard shell has a fixed
+            # sidebar/header and screen layout that can leak into Chrome PDF.
+            isolated = """<!doctype html><html><head><meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Eastern Gaels Demographics Report — Print</title>
+            <style>
+            *{box-sizing:border-box}
+            html,body{margin:0;padding:0;background:#e9efeb;font-family:Arial,sans-serif}
+            .report-page{margin:18px auto}
+            @media print{
+              @page{size:A4;margin:0}
+              html,body{width:210mm!important;margin:0!important;padding:0!important;background:white!important}
+              .report-tools{display:none!important}
+              .report-page{display:block!important;position:relative!important;box-sizing:border-box!important;
+                width:210mm!important;max-width:210mm!important;height:297mm!important;
+                min-height:297mm!important;max-height:297mm!important;margin:0!important;
+                padding:12mm!important;overflow:hidden!important;box-shadow:none!important;
+                break-inside:avoid!important;page-break-inside:avoid!important;
+                break-after:page!important;page-break-after:always!important}
+              .report-page:last-of-type{break-after:auto!important;page-break-after:auto!important}
+              .report-accent{height:5mm!important}
+              .report-final-cover{height:calc(273mm - 5mm)!important;min-height:0!important;max-height:none!important}
+              .report-final-cover img{width:100%!important;max-width:100%!important;height:auto!important}
+              .report-body{width:100%!important;max-width:100%!important;overflow:hidden!important}
+              .report-metrics,.report-charts{width:100%!important;max-width:100%!important}
+              .report-charts{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+              .report-metrics{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+            }
+            </style></head><body>""" + report + "</body></html>"
+            return self.out(isolated)
         if path == '/reports/demographics':
             user = self.need()
             if not user:
