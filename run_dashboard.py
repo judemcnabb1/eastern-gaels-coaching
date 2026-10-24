@@ -25,6 +25,7 @@ class ReportHandler(app.H):
         report_assets = {
             '/report-pitch.png': ('EG Pitch .png', 'image/png'),
             '/report-demographics-cover.png': ('demographics-cover.png', 'image/png'),
+            '/report-final-cover.webp': ('demographics-cover-final-web.webp', 'image/webp'),
             '/report-eastern-gaels.jpg': ('Eastern Gaels .jpg', 'image/jpeg'),
             '/report-meath.png': ('Meath Logo.png', 'image/png'),
         }
