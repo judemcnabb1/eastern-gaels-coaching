@@ -143,18 +143,24 @@ def render(demo, charts):
 .catchment-pie-layout{display:flex;flex-direction:column;align-items:center;gap:8px}.catchment-pie-layout svg{width:75%;max-width:230px;flex:none;filter:drop-shadow(0 6px 4px #003e2b35);transform:scaleY(.84)}.catchment-pie-key{font-size:11px;width:100%}.catchment-legend-heading{font-size:10px;font-weight:900;color:#005638;letter-spacing:1px}.catchment-legend-row{display:flex;align-items:center;gap:7px;padding:4px 0;border-bottom:1px solid #e1ebe5}.catchment-swatch{width:11px;height:11px;flex:none;border-radius:2px}.catchment-area{flex:1}.catchment-pie-key strong{color:#005638;white-space:nowrap}.catchment-total{border-top:1px solid #ddd;padding-top:5px;font-weight:bold} .report-parish-counts{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:10px;font-size:11px}.report-parish-counts>div{display:flex;justify-content:space-between;gap:5px;border-bottom:1px solid #e6eee9;padding:3px 0}.report-parish-counts strong{white-space:nowrap;color:#005638}.report-no-data{font-size:14px;color:#567369;padding:30px 8px}.panel h3{font-size:16px;color:#005638}.panel svg{width:100%;height:auto}
     @media(max-width:650px){.report-metrics,.report-charts{grid-template-columns:1fr 1fr}.report-identity{padding:20px}}
     @media print{.report-charts{gap:8px;margin-top:12px}.panel{padding:8px;min-height:0}.panel h3{font-size:13px;margin:4px 0}.catchment-pie-layout svg{max-width:145px}.catchment-legend-row{padding:2px 0}.report-body{padding:18px 24px 12px}.report-heading{margin-bottom:10px}.metric{padding:10px 4px}.metric strong{font-size:31px}.report-trend-svg{max-height:145px}.report-3d-bars{max-height:145px}
-    @page{size:A4;margin:8mm}
+    @page{size:A4;margin:12mm}
     html,body{margin:0!important;padding:0!important;width:auto!important;background:#fff!important}
     .sidebar,.topbar,.report-tools,body>header,header{display:none!important}
     main{display:block!important;margin:0!important;padding:0!important;width:100%!important;max-width:none!important;min-height:0!important;overflow:visible!important}
     body{display:block!important;overflow:visible!important}
     .report-page:first-of-type{break-before:auto!important;page-break-before:auto!important}
-    .report-page{box-sizing:border-box!important;width:190mm!important;height:281mm!important;min-height:0!important;max-height:281mm!important;max-width:none!important;box-shadow:none!important;margin:0 auto!important;padding:0!important;overflow:hidden!important;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
+    .report-page{box-sizing:border-box!important;width:100%!important;height:273mm!important;min-height:0!important;max-height:273mm!important;max-width:none!important;box-shadow:none!important;margin:0 auto!important;padding:0!important;overflow:hidden!important;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
     .report-page:last-of-type{break-after:auto;page-break-after:auto}
-    .report-final-cover{display:block!important;height:calc(281mm - 22px)!important;min-height:0!important;max-height:calc(281mm - 22px)!important;overflow:hidden!important}
+    .report-final-cover{display:block!important;height:calc(273mm - 22px)!important;min-height:0!important;max-height:calc(273mm - 22px)!important;overflow:hidden!important}
     .report-final-art{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;max-height:none!important;margin:0!important;padding:0!important;overflow:hidden!important}
     .report-final-cover img{display:block!important;width:100%!important;max-width:100%!important;height:auto!important;max-height:none!important;margin:0!important;object-fit:contain!important}
-    .report-body{box-sizing:border-box;padding:12px 20px 8px!important}
+    .report-body{box-sizing:border-box;width:100%!important;max-width:100%!important;padding:12px 18px 8px!important}
+    .report-heading{min-width:0!important;gap:8px!important}
+    .report-heading>div:first-child{min-width:0!important;flex:1 1 auto!important}
+    .report-heading h2{font-size:19px!important;white-space:normal!important}
+    .report-mini-identity{flex:0 0 auto!important;gap:6px!important}
+    .report-mini-identity img{width:38px!important;height:48px!important;object-fit:contain!important}
+    .metric span{font-size:10px!important;overflow-wrap:anywhere!important}
     .report-metrics{grid-template-columns:repeat(4,minmax(0,1fr))!important}
     .report-charts{grid-template-columns:repeat(2,minmax(0,1fr))!important}
     .report-charts{gap:6px!important;margin-top:8px!important}
