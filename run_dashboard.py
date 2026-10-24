@@ -6,6 +6,7 @@ import eastern_gaels_v7 as app
 from demographics_report import render
 from demographics_pdf import build_pdf
 from demographics_styled_pdf import build_styled_pdf
+from schools_report import summary as schools_summary, render as render_schools, pdf as schools_pdf
 
 _original_page = app.page
 
