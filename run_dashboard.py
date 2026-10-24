@@ -4,6 +4,7 @@ import threading
 from http.server import ThreadingHTTPServer
 import eastern_gaels_v7 as app
 from demographics_report import render
+from demographics_pdf import build_pdf
 
 _original_page = app.page
 
@@ -42,6 +43,19 @@ class ReportHandler(app.H):
             self.send_header('Content-Type', mime)
             self.send_header('Content-Length', str(len(data)))
             self.send_header('Cache-Control', 'public, max-age=3600')
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if path == '/reports/demographics/download.pdf':
+            user = self.need()
+            if not user:
+                return
+            data = build_pdf(app.DEMO, app.BASE)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/pdf')
+            self.send_header('Content-Disposition', 'attachment; filename="Eastern-Gaels-Demographics-Report.pdf"')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'no-store')
             self.end_headers()
             self.wfile.write(data)
             return
