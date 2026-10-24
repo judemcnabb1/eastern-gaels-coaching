@@ -153,7 +153,7 @@ def render(demo, charts):
     .report-page:last-of-type{break-after:auto;page-break-after:auto}
     .report-final-cover{display:block!important;height:calc(273mm - 22px)!important;min-height:0!important;max-height:calc(273mm - 22px)!important;overflow:hidden!important}
     .report-final-art{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;max-height:none!important;margin:0!important;padding:0!important;overflow:hidden!important}
-    .report-final-cover img{display:block!important;width:100%!important;max-width:100%!important;height:auto!important;max-height:none!important;margin:0!important;object-fit:contain!important}
+    .report-final-cover img{display:block!important;width:92%!important;max-width:92%!important;height:auto!important;max-height:none!important;margin:0 auto!important;object-fit:contain!important}
     .report-page *{box-sizing:border-box!important}
     .report-body{box-sizing:border-box;width:100%!important;max-width:100%!important;padding:12px 18px 8px!important}
     .report-heading{min-width:0!important;gap:8px!important}
