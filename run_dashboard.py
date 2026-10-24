@@ -61,7 +61,7 @@ class ReportHandler(app.H):
             data = schools_summary(rows)
             if path.endswith('.pdf'):
                 try:
-                    content = schools_pdf(data, app.BASE, app.DEMO.get("school_totals", {}))
+                    content = schools_pdf(data, app.BASE, app.DEMO.get("school_totals", {}), sum(int(v or 0) for v in app.DEMO.get("age_totals", {}).values()))
                 except Exception as exc:
                     self.send_error(503, 'Schools PDF unavailable: ' + str(exc)[:140])
                     return
@@ -73,7 +73,7 @@ class ReportHandler(app.H):
                 self.end_headers()
                 self.wfile.write(content)
                 return
-            return self.out(app.page('Schools Demographics Report', render_schools(data, app.DEMO.get("school_totals", {})), user))
+            return self.out(app.page('Schools Demographics Report', render_schools(data, app.DEMO.get("school_totals", {}), sum(int(v or 0) for v in app.DEMO.get("age_totals", {}).values())), user))
         if path == '/reports/demographics/styled.pdf':
             user = self.need()
             if not user:
