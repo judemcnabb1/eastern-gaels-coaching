@@ -155,6 +155,12 @@ def render(demo, charts):
     .report-final-art{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;max-height:none!important;margin:0!important;padding:0!important;overflow:hidden!important}
     .report-final-cover img{display:block!important;width:92%!important;max-width:92%!important;height:auto!important;max-height:none!important;margin:0 auto!important;object-fit:contain!important}
     .report-page *{box-sizing:border-box!important}
+    .report-page{position:relative!important;left:auto!important;right:auto!important;transform:none!important}
+    .report-page>.report-accent{width:100%!important}
+    .report-page>.report-body{overflow:hidden!important}
+    .report-metrics,.report-charts{width:100%!important;max-width:100%!important}
+    .report-metrics>*,.report-charts>*{max-width:100%!important;min-width:0!important}
+    .report-mini-identity{max-width:90px!important}
     .report-body{box-sizing:border-box;width:100%!important;max-width:100%!important;padding:12px 18px 8px!important}
     .report-heading{min-width:0!important;gap:8px!important}
     .report-heading>div:first-child{min-width:0!important;flex:1 1 auto!important}
