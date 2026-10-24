@@ -26,6 +26,7 @@ class ReportHandler(app.H):
     def do_GET(self):
         path = app.urlparse(self.path).path
         report_assets = {
+            '/report-schools-approved-cover.png': ('Eastern_Gaels_Schools_Demographics_Approved_Cover.png', 'image/png'),
             '/report-pitch.png': ('EG Pitch .png', 'image/png'),
             '/report-demographics-cover.png': ('demographics-cover.png', 'image/png'),
             '/report-final-cover.webp': ('demographics-cover-final-web.webp', 'image/webp'),
