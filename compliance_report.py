@@ -36,6 +36,22 @@ def render(coaches, records):
     def pct(x):return f'{len(x["current"])*100/n:.0f}%' if n else '—'
     css="""<style>
     .compliance-cover{height:1030px;max-width:900px;margin:20px auto;background:#004b32;color:white;font-family:Arial,sans-serif;display:flex;flex-direction:column;justify-content:space-between}.compliance-cover .cover-head{padding:45px;display:flex;align-items:center;gap:25px}.compliance-cover .cover-head img{width:110px;height:125px;object-fit:contain}.compliance-cover .cover-head strong{font-size:34px}.compliance-cover .cover-photo{height:370px;background-image:url("/report-pitch.png");background-size:cover;background-position:center;border-top:9px solid #edc449;border-bottom:9px solid #edc449}.compliance-cover .cover-bottom{padding:35px 55px 65px}.compliance-cover h1{font-size:59px;line-height:1.1;margin:0;color:white}.compliance-cover h1 span{color:#edc449}.compliance-cover .cover-year{font-size:26px;color:#edc449}.compliance-cover .cover-areas{font-size:17px;letter-spacing:2px;margin:25px 0}.compliance-cover .cover-motto{font-size:12px;letter-spacing:2px}.compliance-report{max-width:900px;margin:20px auto;background:#fff;padding:30px;color:#123b2b;font-family:Arial,sans-serif}
+    .approved-compliance-cover{display:block!important;position:relative!important;width:min(100%,900px)!important;max-width:900px!important;height:auto!important;aspect-ratio:1024/1448!important;min-height:0!important;margin:20px auto 36px!important;padding:0!important;overflow:hidden!important;clear:both!important;box-sizing:border-box!important}
+    .approved-compliance-cover img{display:block!important;position:static!important;width:100%!important;height:100%!important;max-width:100%!important;object-fit:fill!important}
+    .compliance-report{clear:both!important;position:relative!important;box-sizing:border-box!important;width:min(100%,900px)!important;max-width:900px!important;margin:0 auto 24px!important;overflow:visible!important}
+    .compliance-report table{table-layout:fixed!important;max-width:100%!important;overflow-wrap:anywhere!important}
+    .compliance-report td,.compliance-report th{overflow-wrap:anywhere!important;word-break:normal!important}
+    @media print{
+      @page{size:A4;margin:0}
+      html,body{margin:0!important;padding:0!important;width:210mm!important;max-width:210mm!important}
+      .approved-compliance-cover{width:210mm!important;max-width:210mm!important;height:297mm!important;aspect-ratio:auto!important;margin:0!important;padding:0!important;break-after:page!important;page-break-after:always!important}
+      .approved-compliance-cover img{width:210mm!important;height:297mm!important}
+      .compliance-report{width:210mm!important;max-width:210mm!important;margin:0!important;padding:15mm!important;box-sizing:border-box!important;overflow:visible!important}
+      .compliance-report .scores{display:block!important}
+      .compliance-report .score{display:inline-block!important;vertical-align:top!important;width:46%!important;box-sizing:border-box!important;margin-right:2%!important}
+      .compliance-report table{width:100%!important;table-layout:fixed!important;font-size:10px!important}
+      .compliance-report th,.compliance-report td{padding:5px!important}
+    }
     .compliance-report h1{font-size:29px;margin:0;color:#005638}.compliance-report .subtitle{color:#657c70;margin:8px 0 22px}
     .compliance-report .scores{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px}
     .compliance-report .score{border-top:6px solid #e9bd3e;background:#edf7f0;border-radius:8px;padding:16px}
