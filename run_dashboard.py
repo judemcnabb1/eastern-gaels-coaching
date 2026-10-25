@@ -7,14 +7,15 @@ from demographics_report import render
 from demographics_pdf import build_pdf
 from demographics_styled_pdf import build_styled_pdf
 from schools_report import summary as schools_summary, render as render_schools, pdf as schools_pdf
+from compliance_report import render as render_compliance, pdf as compliance_pdf
 
 _original_page = app.page
 
 def page_with_reports(title, body, user=None):
     if title == "Dashboard" and user:
-        body = '<div class="actions"><a class="btn" href="/reports/demographics">Open Demographics Report →</a> <a class="btn" href="/reports/schools">Open Schools Demographics Report →</a></div>' + body
+        body = '<div class="actions"><a class="btn" href="/reports/demographics">Open Demographics Report →</a> <a class="btn" href="/reports/schools">Open Schools Demographics Report →</a> <a class="btn" href="/reports/compliance">Open Compliance Report →</a></div>' + body
     if title == 'Reports' and user:
-        body = '<div class="actions"><a class="btn" href="/reports/demographics">Open Demographics Report →</a> <a class="btn" href="/reports/schools">Open Schools Demographics Report →</a></div>' + body
+        body = '<div class="actions"><a class="btn" href="/reports/demographics">Open Demographics Report →</a> <a class="btn" href="/reports/schools">Open Schools Demographics Report →</a> <a class="btn" href="/reports/compliance">Open Compliance Report →</a></div>' + body
     html = _original_page(title, body, user)
     if user:
         html = html.replace('<span>Reports</span></a>', '<span>Reports Centre</span></a>')
@@ -49,6 +50,27 @@ class ReportHandler(app.H):
             self.end_headers()
             self.wfile.write(data)
             return
+        if path in ('/reports/compliance', '/reports/compliance.pdf'):
+            user = self.need()
+            if not user:
+                return
+            coaches = app.COACHING.get('coaches', {})
+            records = app.compliance_records()
+            if path.endswith('.pdf'):
+                try:
+                    content = compliance_pdf(coaches, records, app.BASE)
+                except Exception as exc:
+                    self.send_error(503, 'Compliance PDF unavailable: ' + str(exc)[:140])
+                    return
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/pdf')
+                self.send_header('Content-Disposition', 'attachment; filename="Eastern-Gaels-Compliance-Report.pdf"')
+                self.send_header('Content-Length', str(len(content)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                self.wfile.write(content)
+                return
+            return self.out(app.page('Compliance Report', render_compliance(coaches, records), user))
         if path in ('/reports/schools', '/reports/schools/styled.pdf'):
             user = self.need()
             if not user:
