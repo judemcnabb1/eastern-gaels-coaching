@@ -73,6 +73,10 @@ def render(coaches, records):
     .compliance-report .report-tools{margin-bottom:20px}
     @page{size:A4;margin:14mm}
     @media print{.approved-compliance-cover{width:210mm;height:297mm;max-width:none;margin:0;break-after:page;page-break-after:always}.approved-compliance-cover img{width:100%;height:100%;object-fit:fill}.compliance-cover .cover-photo{height:100mm}.compliance-cover h1{font-size:48px}.compliance-report{padding:0;margin:0;max-width:none}.compliance-report h2{break-after:avoid}.compliance-report thead{display:table-header-group}.compliance-report .report-tools{display:none}}
+    @media print{
+      .approved-compliance-cover{width:186mm!important;max-width:186mm!important;height:263.04mm!important;aspect-ratio:auto!important;margin:12mm auto 21.96mm!important;padding:0!important}
+      .approved-compliance-cover img{width:186mm!important;height:263.04mm!important;object-fit:contain!important}
+    }
     </style>"""
     tools='<div class="report-tools"><a class="btn" href="/reports">Back to Reports</a> <a class="btn" href="/reports/compliance.pdf">Download PDF</a></div>'
     cover='<section class="compliance-cover approved-compliance-cover"><img src="/compliance-cover.png" alt="Eastern Gaels Coaching Compliance report cover"></section>'
