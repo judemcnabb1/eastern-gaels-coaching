@@ -104,6 +104,18 @@ def render(coaches, records):
       .compliance-report tbody tr{break-inside:avoid!important;page-break-inside:avoid!important}
       .compliance-report td,.compliance-report th{line-height:1.3!important;padding:6px 7px!important}
     }
+
+    /* Dedicated printable page area keeps repeated green table headers clear of page edges. */
+    @page compliance-cover-sheet{size:A4;margin:0}
+    @page compliance-data-sheet{size:A4;margin:17mm 15mm 16mm}
+    @media print{
+      .approved-compliance-cover{page:compliance-cover-sheet!important;width:180mm!important;height:254.53mm!important;margin:15mm 15mm 27.47mm!important}
+      .compliance-report{page:compliance-data-sheet!important;width:auto!important;max-width:none!important;padding:0!important;margin:0!important;box-sizing:border-box!important}
+      .compliance-report table{border-collapse:separate!important;border-spacing:0!important}
+      .compliance-report thead{display:table-header-group!important}
+      .compliance-report thead th{padding:10px 8px!important;line-height:1.45!important;vertical-align:middle!important;break-inside:avoid!important}
+      .compliance-report tbody tr{break-inside:avoid!important}
+    }
     </style>"""
     tools='<div class="report-tools"><a class="btn" href="/reports">Back to Reports</a> <a class="btn" href="/reports/compliance.pdf">Download PDF</a></div>'
     cover='<section class="compliance-cover approved-compliance-cover"><img src="/compliance-cover.png" alt="Eastern Gaels Coaching Compliance report cover"></section>'
