@@ -52,6 +52,14 @@ def render(coaches, records):
       .compliance-report table{width:100%!important;table-layout:fixed!important;font-size:10px!important}
       .compliance-report th,.compliance-report td{padding:5px!important}
     }
+    /* Keep the full cover visible on narrow screens and within A4 print edges. */
+    .approved-compliance-cover{width:calc(100% - 32px)!important;max-width:760px!important;height:auto!important;aspect-ratio:1024/1448!important;margin:20px auto 36px!important;box-sizing:border-box!important;overflow:hidden!important}
+    .approved-compliance-cover img{width:100%!important;max-width:100%!important;height:100%!important;display:block!important;object-fit:contain!important}
+    @media print{
+      @page{size:A4;margin:0}
+      .approved-compliance-cover{width:186mm!important;max-width:186mm!important;height:263.04mm!important;aspect-ratio:auto!important;margin:12mm auto 21.96mm!important;padding:0!important;break-after:page!important;page-break-after:always!important}
+      .approved-compliance-cover img{width:186mm!important;height:263.04mm!important;object-fit:contain!important}
+    }
     .compliance-report h1{font-size:29px;margin:0;color:#005638}.compliance-report .subtitle{color:#657c70;margin:8px 0 22px}
     .compliance-report .scores{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px}
     .compliance-report .score{border-top:6px solid #e9bd3e;background:#edf7f0;border-radius:8px;padding:16px}
