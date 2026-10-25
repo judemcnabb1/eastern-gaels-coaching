@@ -87,6 +87,23 @@ def render(coaches, records):
       .approved-compliance-cover{display:block!important;width:160mm!important;max-width:160mm!important;height:226.25mm!important;min-height:0!important;aspect-ratio:auto!important;margin:25mm 25mm 45.75mm!important;padding:0!important;overflow:hidden!important;break-after:page!important;page-break-after:always!important}
       .approved-compliance-cover img{display:block!important;width:160mm!important;max-width:160mm!important;height:226.25mm!important;object-fit:contain!important}
     }
+
+    /* Final balanced A4 cover and reliable page breaks for coach tables. */
+    @media screen{
+      .approved-compliance-cover{width:min(88vw,780px)!important;max-width:calc(100% - 28px)!important;margin:20px auto 36px!important}
+    }
+    @media print{
+      @page{size:A4;margin:0}
+      .approved-compliance-cover{width:180mm!important;max-width:180mm!important;height:254.53mm!important;min-height:0!important;margin:15mm 15mm 27.47mm!important;padding:0!important;break-after:page!important;page-break-after:always!important}
+      .approved-compliance-cover img{width:180mm!important;height:254.53mm!important;object-fit:contain!important}
+      .compliance-report{padding:15mm!important;margin:0!important;width:210mm!important;max-width:210mm!important;box-sizing:border-box!important}
+      .compliance-report h2{break-after:avoid-page!important;page-break-after:avoid!important}
+      .compliance-report table{break-inside:auto!important;page-break-inside:auto!important;border-collapse:collapse!important}
+      .compliance-report thead{display:table-header-group!important;break-after:avoid-page!important}
+      .compliance-report thead tr{break-after:avoid-page!important}
+      .compliance-report tbody tr{break-inside:avoid!important;page-break-inside:avoid!important}
+      .compliance-report td,.compliance-report th{line-height:1.3!important;padding:6px 7px!important}
+    }
     </style>"""
     tools='<div class="report-tools"><a class="btn" href="/reports">Back to Reports</a> <a class="btn" href="/reports/compliance.pdf">Download PDF</a></div>'
     cover='<section class="compliance-cover approved-compliance-cover"><img src="/compliance-cover.png" alt="Eastern Gaels Coaching Compliance report cover"></section>'
