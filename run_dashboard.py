@@ -50,6 +50,20 @@ class ReportHandler(app.H):
             self.end_headers()
             self.wfile.write(data)
             return
+        if path == '/compliance-cover.png':
+            import mimetypes
+            image_path = os.path.join(app.BASE, 'compliance-cover.png')
+            if not os.path.isfile(image_path):
+                return self.send_error(404)
+            with open(image_path, 'rb') as stream:
+                image_bytes = stream.read()
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/png')
+            self.send_header('Content-Length', str(len(image_bytes)))
+            self.send_header('Cache-Control', 'public, max-age=3600')
+            self.end_headers()
+            self.wfile.write(image_bytes)
+            return
         if path in ('/reports/compliance', '/reports/compliance.pdf'):
             user = self.need()
             if not user:
