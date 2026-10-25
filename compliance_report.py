@@ -77,6 +77,16 @@ def render(coaches, records):
       .approved-compliance-cover{width:186mm!important;max-width:186mm!important;height:263.04mm!important;aspect-ratio:auto!important;margin:12mm auto 21.96mm!important;padding:0!important}
       .approved-compliance-cover img{width:186mm!important;height:263.04mm!important;object-fit:contain!important}
     }
+    /* Final cover fit: deliberately narrower than A4 with equal left/right gutters. */
+    @media screen{
+      .approved-compliance-cover{width:min(72vw,640px)!important;max-width:calc(100% - 48px)!important;margin-left:auto!important;margin-right:auto!important}
+      .approved-compliance-cover img{width:100%!important;height:auto!important}
+    }
+    @media print{
+      @page{size:A4;margin:0}
+      .approved-compliance-cover{display:block!important;width:160mm!important;max-width:160mm!important;height:226.25mm!important;min-height:0!important;aspect-ratio:auto!important;margin:25mm 25mm 45.75mm!important;padding:0!important;overflow:hidden!important;break-after:page!important;page-break-after:always!important}
+      .approved-compliance-cover img{display:block!important;width:160mm!important;max-width:160mm!important;height:226.25mm!important;object-fit:contain!important}
+    }
     </style>"""
     tools='<div class="report-tools"><a class="btn" href="/reports">Back to Reports</a> <a class="btn" href="/reports/compliance.pdf">Download PDF</a></div>'
     cover='<section class="compliance-cover approved-compliance-cover"><img src="/compliance-cover.png" alt="Eastern Gaels Coaching Compliance report cover"></section>'
