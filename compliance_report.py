@@ -48,10 +48,10 @@ def render(coaches, records):
     .compliance-report .note{font-size:12px;color:#566c60;line-height:1.5}
     .compliance-report .report-tools{margin-bottom:20px}
     @page{size:A4;margin:14mm}
-    @media print{.compliance-cover{width:210mm;height:297mm;max-width:none;margin:0;break-after:page}.compliance-cover .cover-photo{height:100mm}.compliance-cover h1{font-size:48px}.compliance-report{padding:0;margin:0;max-width:none}.compliance-report h2{break-after:avoid}.compliance-report thead{display:table-header-group}.compliance-report .report-tools{display:none}}
+    @media print{.approved-compliance-cover{width:210mm;height:297mm;max-width:none;margin:0;break-after:page;page-break-after:always}.approved-compliance-cover img{width:100%;height:100%;object-fit:fill}.compliance-cover .cover-photo{height:100mm}.compliance-cover h1{font-size:48px}.compliance-report{padding:0;margin:0;max-width:none}.compliance-report h2{break-after:avoid}.compliance-report thead{display:table-header-group}.compliance-report .report-tools{display:none}}
     </style>"""
     tools='<div class="report-tools"><a class="btn" href="/reports">Back to Reports</a> <a class="btn" href="/reports/compliance.pdf">Download PDF</a></div>'
-    cover='<section class="compliance-cover"><div class="cover-head"><img src="/report-eastern-gaels.jpg" alt="Eastern Gaels crest"><div><strong>EASTERN GAELS</strong><p>GAELIC ATHLETIC CLUB</p><small>OUR CLUB · OUR COMMUNITY · OUR FUTURE</small></div></div><div class="cover-photo"></div><div class="cover-bottom"><h1>COACHING<br><span>COMPLIANCE</span></h1><p class="cover-year">REPORT 2026–2027</p><div class="cover-areas">✓ GARDA VETTING &nbsp; | &nbsp; ✓ SAFEGUARDING</div><p class="cover-motto">SAFE PEOPLE · SAFE ENVIRONMENTS · POSITIVE EXPERIENCES</p></div></section>'
+    cover='<section class="compliance-cover approved-compliance-cover"><img src="/compliance-cover.png" alt="Eastern Gaels Coaching Compliance report cover"></section>'
     h=css+cover+'<article class="compliance-report">'+tools+'<h1>Eastern Gaels · Coaching Compliance</h1><p class="subtitle">Garda Vetting &amp; Safeguarding · As at '+today.strftime('%d %B %Y')+'</p>'
     h+='<div class="scores"><div class="score"><strong>'+pct(g)+'</strong><b>Garda vetted</b><p>'+str(len(g['current']))+' of '+str(n)+' coaches</p></div><div class="score"><strong>'+pct(s)+'</strong><b>Safeguarding current</b><p>'+str(len(s['current']))+' of '+str(n)+' coaches</p></div></div>'
     h+='<p class="note">Current = positive status or recorded evidence AND a valid expiry date. Unknown or missing dates are treated as outstanding until confirmed; expired records are not counted as current.</p>'
@@ -68,5 +68,5 @@ def render(coaches, records):
 def pdf(coaches,records,base):
     from weasyprint import HTML
     html=render(coaches,records)
-    html=html.replace('/report-eastern-gaels.jpg',Path(base,'Eastern Gaels .jpg').as_uri()).replace('/report-pitch.png',Path(base,'EG Pitch .png').as_uri())
+    html=html.replace('/compliance-cover.png',Path(base,'compliance-cover.png').as_uri())
     return HTML(string='<html><head><meta charset="utf-8"></head><body>'+html+'</body></html>',base_url=Path(base).as_uri()).write_pdf()
