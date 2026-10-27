@@ -35,21 +35,7 @@ def build_pdf(demo, base):
     story=[]
     # A dedicated cover sheet. Uses the approved club pitch photograph already in the app.
     photo=Path(base,'report-pitch.png')
-    story.append(Spacer(1,75))
-    story.append(Paragraph('EASTERN GAELS',styles['EGTitle']))
-    story.append(Spacer(1,28))
-    if photo.exists():
-        from PIL import Image as PILImage
-        with PILImage.open(photo) as im:
-            iw,ih=im.size
-        width=480
-        story.append(Image(str(photo),width=width,height=min(295,width*ih/iw),kind='proportional'))
-    else:
-        story.append(Spacer(1,190))
-    story.append(Spacer(1,35))
-    story.append(Paragraph('PAID MEMBERSHIP 2026',styles['EGTitle']))
-    story.append(Paragraph('Membership payment status report',styles['Heading2']))
-    story.append(Paragraph('Based on the current imported membership records',styles['Normal']))
+    story.append(Spacer(1,1))
     story.append(PageBreak())
     story.append(Paragraph('Paid Membership 2026',styles['EGTitle']))
     pct=f'{100*paid/known:.1f}%' if known else 'N/A'
@@ -82,5 +68,15 @@ def build_pdf(demo, base):
             section.append(Paragraph('No unpaid members recorded.',styles['EGSmall']))
         story.extend(section)
     doc=SimpleDocTemplate(out,pagesize=A4,rightMargin=45,leftMargin=45,topMargin=48,bottomMargin=45,title='Eastern Gaels Paid Membership 2026')
-    doc.build(story)
+    def draw_cover(canvas, document):
+        photo=Path(base,'paid-membership-cover.png')
+        if photo.exists():
+            canvas.drawImage(str(photo),0,0,width=A4[0],height=A4[1],preserveAspectRatio=False,mask='auto')
+        else:
+            canvas.setFillColor(GREEN)
+            canvas.rect(0,0,A4[0],A4[1],fill=1,stroke=0)
+            canvas.setFillColor(colors.white)
+            canvas.setFont('Helvetica-Bold',28)
+            canvas.drawCentredString(A4[0]/2,A4[1]/2,'PAID MEMBERSHIP 2026')
+    doc.build(story,onFirstPage=draw_cover)
     return out.getvalue()
