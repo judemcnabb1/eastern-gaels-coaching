@@ -146,7 +146,7 @@ class ReportHandler(app.H):
             <a class="eg-report-tile" href="/reports/demographics"><span class="eg-report-icon" aria-hidden="true">◉</span><strong>Demographics Report</strong><small>Club membership and population insights</small></a>
             <a class="eg-report-tile" href="/reports/schools"><span class="eg-report-icon" aria-hidden="true">▦</span><strong>Schools Demographics Report</strong><small>Schools and coaching programme insights</small></a>
             <a class="eg-report-tile" href="/reports/compliance"><span class="eg-report-icon" aria-hidden="true">✓</span><strong>Compliance Report</strong><small>Garda Vetting and Safeguarding</small></a>
-            <a class="eg-report-tile" href="/reports/paid-membership"><span class="eg-report-icon" aria-hidden="true">€</span><strong>Paid Membership Report</strong><small>Payment status by age group and unpaid member names</small></a>
+            <a class="eg-report-tile" href="/reports/paid-membership"><span class="eg-report-icon" aria-hidden="true">€</span><strong>Paid Membership 2026</strong><small>Payment status by age group and unpaid member names</small></a>
             </div></section>"""
             return self.out(app.page('Reports Centre', content, user))
         if path == '/dashboard-preview':
