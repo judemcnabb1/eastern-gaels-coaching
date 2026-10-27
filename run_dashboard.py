@@ -20,6 +20,10 @@ def page_with_reports(title, body, user=None):
     html = _original_page(title, body, user)
     if user:
         html = html.replace('<span>Reports</span></a>', '<span>Reports Centre</span></a>')
+        # Dashboard 2.0: CSS-only shell refresh. Does not alter page logic or stored records.
+        if title not in ('Demographics Report', 'Schools Demographics Report', 'Compliance Report'):
+            html = html.replace('</head>', '<link rel="stylesheet" href="/dashboard-refresh.css?v=1"></head>', 1)
+        html = html.replace('</nav>', '<a href="/dashboard-preview"><span>Compliance Centre Preview</span></a></nav>', 1)
     return html
 
 app.page = page_with_reports
@@ -48,6 +52,19 @@ class ReportHandler(app.H):
             self.send_header('Content-Type', mime)
             self.send_header('Content-Length', str(len(data)))
             self.send_header('Cache-Control', 'public, max-age=3600')
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if path == '/dashboard-refresh.css':
+            filename = os.path.join(app.BASE, 'dashboard_refresh.css')
+            if not os.path.isfile(filename):
+                return self.send_error(404)
+            with open(filename, 'rb') as stream:
+                data = stream.read()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/css; charset=utf-8')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'public, max-age=300')
             self.end_headers()
             self.wfile.write(data)
             return
