@@ -192,7 +192,7 @@ class ReportHandler(app.H):
                 self.end_headers()
                 self.wfile.write(content)
                 return
-            return self.out(app.page('Compliance Report', render_compliance(coaches, records).replace('<article class="compliance-report"><div class="report-tools">', '<article class="compliance-report">').replace('<section class="compliance-cover approved-compliance-cover">', '<div class="report-tools" style="max-width:900px;margin:14px auto;display:flex;gap:12px;justify-content:flex-start"><a class="btn" href="/reports">← Return to Reports</a><a class="btn" href="/reports/compliance.pdf">⬇ Download PDF</a></div><section class="compliance-cover approved-compliance-cover">'), user))
+            return self.out(app.page('Compliance Report', render_compliance(coaches, records).replace('<article class="compliance-report"><div class="report-tools"><a class="btn" href="/reports">Back to Reports</a> <a class="btn" href="/reports/compliance.pdf">Download PDF</a></div>', '<article class="compliance-report">').replace('<section class="compliance-cover approved-compliance-cover">', '<div class="report-tools" style="max-width:900px;margin:14px auto;display:flex;gap:12px;justify-content:flex-start"><a class="btn" href="/reports">← Return to Reports</a><a class="btn" href="/reports/compliance.pdf">⬇ Download PDF</a></div><section class="compliance-cover approved-compliance-cover">'), user))
         if path in ('/reports/schools', '/reports/schools/styled.pdf'):
             user = self.need()
             if not user:
