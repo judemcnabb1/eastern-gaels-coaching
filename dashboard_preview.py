@@ -25,6 +25,13 @@ def render(coaches,records):
                 state='expired' if expiry and expiry<today else 'missing'
             vals.append({'date':expiry,'state':state,'days':days,'kind':kind})
         rows.append({'name':name,'g':vals[0],'s':vals[1]})
+    def compliance_order(row):
+        states=(row['g']['state'],row['s']['state'])
+        if all(state in ('current','due') for state in states):group=0
+        elif 'missing' in states:group=2
+        else:group=1
+        return (group,row['name'].casefold())
+    rows.sort(key=compliance_order)
     n=len(rows)
     count=lambda kind:sum(r[kind]['state'] in ('current','due') for r in rows)
     alerts=sorted([(r['name'],v) for r in rows for v in (r['g'],r['s']) if v['state']=='due'],key=lambda x:x[1]['days'])
@@ -67,7 +74,7 @@ def render(coaches,records):
         html+=f'<div class="eg-kpi"><span>{e(label)}</span><strong>{e(value)}</strong><small>{e(detail)}</small></div>'
     html+='</div><div class="eg-grid"><section class="eg-panel"><h2>Upcoming expiries · Next 90 days</h2><table><thead><tr><th>Coach</th><th>Requirement</th><th>Expiry</th><th>Days</th></tr></thead><tbody>'+warning+'</tbody></table></section>'
     html+='<section class="eg-panel"><h2>Missing or expired</h2><table><thead><tr><th>Coach</th><th>Requirement</th><th>Status</th></tr></thead><tbody>'+missing+'</tbody></table></section></div>'
-    html+='<section class="eg-panel"><h2>All coaches · Live expiry register</h2><div class="eg-toolbar"><input class="eg-search" id="eg-coach-search" type="search" placeholder="Search coach names..." oninput="egFilter()"><select id="eg-coach-filter" onchange="egFilter()"><option value="all">All statuses</option><option value="due">Due within 90 days</option><option value="missing">Missing / expired</option><option value="current">Fully current</option></select></div><table><thead><tr><th>Coach</th><th>Garda Vetting</th><th>Safeguarding</th></tr></thead><tbody id="eg-coach-rows">'+table+'</tbody></table></section>'
+    html+='<section class="eg-panel"><h2>All coaches · Fully compliant first, then outstanding, then missing dates</h2><div class="eg-toolbar"><input class="eg-search" id="eg-coach-search" type="search" placeholder="Search coach names..." oninput="egFilter()"><select id="eg-coach-filter" onchange="egFilter()"><option value="all">All statuses</option><option value="due">Due within 90 days</option><option value="missing">Missing / expired</option><option value="current">Fully current</option></select></div><table><thead><tr><th>Coach</th><th>Garda Vetting</th><th>Safeguarding</th></tr></thead><tbody id="eg-coach-rows">'+table+'</tbody></table></section>'
     html+='''<script>function egFilter(){var q=document.getElementById("eg-coach-search").value.toLowerCase(),f=document.getElementById("eg-coach-filter").value;document.querySelectorAll("#eg-coach-rows tr").forEach(function(r){var s=r.dataset.state;var match=f==="all"||(f==="due"&&s.includes("due"))||(f==="missing"&&(s.includes("missing")||s.includes("expired")))||(f==="current"&&!s.includes("missing")&&!s.includes("expired")&&!s.includes("due"));r.style.display=match&&r.dataset.coach.includes(q)?"":"none";});}</script>'''
     html+='<p class="eg-note">Preview only: existing data, forms, permissions and all three downloadable reports are unchanged. Compliance percentages require a current certificate expiry date. Missing dates remain flagged for confirmation.</p></div>'
     return html
