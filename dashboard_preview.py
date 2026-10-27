@@ -58,7 +58,7 @@ def render(coaches,records):
     .eg-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0}
     .eg-kpi{background:#fff;border:1px solid #dce9e2;border-top:5px solid #d4a829;border-radius:12px;padding:18px;box-shadow:0 4px 14px #0b42200c}
     .eg-kpi strong{font-size:32px;display:block;color:#00573c;margin:8px 0}.eg-kpi small{color:#60756c}
-    .eg-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .eg-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}\n    .eg-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
     .eg-panel{background:#fff;border:1px solid #dce9e2;border-radius:12px;padding:17px;min-width:0;overflow:auto;margin-bottom:14px}
     .eg-panel h2{font-size:18px;color:#063d2c;margin:0 0 14px}
     .eg-panel table{width:100%;border-collapse:collapse;font-size:13px}
@@ -71,7 +71,7 @@ def render(coaches,records):
     .eg-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
     .eg-toolbar select{padding:10px;border:1px solid #c9d9d0;border-radius:8px}
     .eg-note{color:#62746a;font-size:12px;line-height:1.5}
-    @media(max-width:900px){.eg-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.eg-grid{grid-template-columns:1fr}}
+    @media(max-width:900px){.eg-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.eg-grid{grid-template-columns:1fr}.eg-three{grid-template-columns:1fr}}
     @media(max-width:500px){.eg-kpis{grid-template-columns:1fr 1fr}.eg-hero h1{font-size:23px}.eg-kpi{padding:12px}.eg-kpi strong{font-size:25px}}
     </style>"""
     html=style+'<div class="eg-preview"><section class="eg-hero"><div><small>EASTERN GAELS · DASHBOARD DESIGN PREVIEW</small><h1>Coaching Compliance Centre</h1><p>Live Garda Vetting &amp; Safeguarding status · '+today.strftime('%d %B %Y')+'</p></div><a href="/reports/compliance">Existing Compliance Report</a></section>'
