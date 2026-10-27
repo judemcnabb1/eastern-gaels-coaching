@@ -8,7 +8,7 @@ from demographics_report import catchment_pie
 def build_pdf(demo, base):
     juvenile = demo.get('players_by_age', {})
     adults = demo.get('adult_payment', {})
-    age_keys = sorted(juvenile, key=lambda v: (int(v[1:]) if v[1:].isdigit() else 999, str(v)))
+    age_keys = sorted(juvenile, key=lambda v: (13 if str(v).strip().upper() == 'U1' else int(v[1:]) if v[1:].isdigit() else 999, str(v)))
     groups = [(('U13' if str(name).strip().upper() == 'U1' else name), juvenile[name]) for name in age_keys] + list(adults.items())
     members = [m for _, group in groups for m in group]
     counts = Counter(m.get('paid') for m in members)
