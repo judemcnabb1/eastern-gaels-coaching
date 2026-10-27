@@ -8,6 +8,7 @@ from demographics_pdf import build_pdf
 from demographics_styled_pdf import build_styled_pdf
 from schools_report import summary as schools_summary, render as render_schools, pdf as schools_pdf
 from compliance_report import render as render_compliance, pdf as compliance_pdf
+from dashboard_preview import render as render_dashboard_preview
 
 _original_page = app.page
 
@@ -64,6 +65,11 @@ class ReportHandler(app.H):
             self.end_headers()
             self.wfile.write(image_bytes)
             return
+        if path == '/dashboard-preview':
+            user = self.need()
+            if not user:
+                return
+            return self.out(app.page('Dashboard Preview', render_dashboard_preview(app.COACHING.get('coaches', {}), app.compliance_records()), user))
         if path in ('/reports/compliance', '/reports/compliance.pdf'):
             user = self.need()
             if not user:
