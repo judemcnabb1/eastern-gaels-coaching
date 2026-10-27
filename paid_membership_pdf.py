@@ -53,10 +53,17 @@ def build_pdf(demo, base):
         pie=Pie()
         pie.x=5;pie.y=5;pie.width=120;pie.height=120
         pie.data=[yes,no,other] if len(group) else [1]
-        pie.labels=['','',''] if len(group) else ['']
+        pie.labels=[f'{100*v/len(group):.1f}%' if v else '' for v in (yes,no,other)] if len(group) else ['']
+        pie.sideLabels=False
+        pie.simpleLabels=False
+        pie.slices.strokeColor=colors.white
+        pie.slices.strokeWidth=1.5
         for i,col in enumerate((GREEN,ORANGE,GREY)):
             if i<len(pie.data):pie.slices[i].fillColor=col
-        drawing=Drawing(140,135);drawing.add(pie)
+        drawing=Drawing(140,145)
+        from reportlab.graphics.shapes import Ellipse
+        drawing.add(Ellipse(7,0,118,17,fillColor=colors.HexColor('#d0ded5'),strokeColor=None))
+        drawing.add(pie)
         details=Paragraph(f'<b>Members:</b> {len(group)}<br/><font color="#075438">Paid: {yes}</font><br/><font color="#9d6718">Not paid: {no}</font><br/>Not recorded: {other}',styles['BodyText'])
         panel=Table([[drawing,details]],colWidths=[160,290]);panel.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#eff7f1')),('BOX',(0,0),(-1,-1),1,colors.HexColor('#bed8c5')),('LEFTPADDING',(0,0),(-1,-1),14),('TOPPADDING',(0,0),(-1,-1),10),('BOTTOMPADDING',(0,0),(-1,-1),10)]));section.append(panel)
         names=[str(m.get('name') or 'Name not recorded') for m in group if m.get('paid')=='NO']
