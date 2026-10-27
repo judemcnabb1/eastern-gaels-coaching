@@ -29,7 +29,7 @@ def page_with_reports(title, body, user=None):
         # Dashboard 2.0: CSS-only shell refresh. Does not alter page logic or stored records.
         if title not in ('Demographics Report', 'Schools Demographics Report', 'Compliance Report'):
             html = html.replace('</head>', '<link rel="stylesheet" href="/dashboard-refresh.css?v=1"></head>', 1)
-        html = html.replace('</nav>', '<a href="/dashboard-preview"><span>Compliance Centre Preview</span></a></nav>', 1)
+        # Compliance Centre is now on the main Compliance page; no preview sidebar link.
     return html
 
 app.page = page_with_reports
