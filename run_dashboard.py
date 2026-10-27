@@ -141,12 +141,13 @@ class ReportHandler(app.H):
             .eg-report-tile strong{font-size:21px;line-height:1.3}
             .eg-report-tile small{font-size:13px;color:#60756b;margin-top:12px}
             @media(max-width:900px){.eg-report-tiles{grid-template-columns:1fr}.eg-report-tile{min-height:230px}}
-            </style><section class="eg-report-hub"><p>EASTERN GAELS · REPORTING</p><h2>Reports Centre</h2><p>Select one of the three existing reports to view or download.</p>
+            </style><section class="eg-report-hub"><p>EASTERN GAELS · REPORTING</p><h2>Reports Centre</h2><p>Choose a report to explore the latest imported club data.</p>
             <div class="eg-report-tiles">
             <a class="eg-report-tile" href="/reports/demographics"><span class="eg-report-icon" aria-hidden="true">◉</span><strong>Demographics Report</strong><small>Club membership and population insights</small></a>
             <a class="eg-report-tile" href="/reports/schools"><span class="eg-report-icon" aria-hidden="true">▦</span><strong>Schools Demographics Report</strong><small>Schools and coaching programme insights</small></a>
             <a class="eg-report-tile" href="/reports/compliance"><span class="eg-report-icon" aria-hidden="true">✓</span><strong>Compliance Report</strong><small>Garda Vetting and Safeguarding</small></a>
-            <a class="eg-report-tile" href="/reports/paid-membership"><span class="eg-report-icon" aria-hidden="true">€</span><strong>Paid Membership Report</strong><small>Payment status by age group and unpaid member names</small></a>\n            </div></section>"""
+            <a class="eg-report-tile" href="/reports/paid-membership"><span class="eg-report-icon" aria-hidden="true">€</span><strong>Paid Membership Report</strong><small>Payment status by age group and unpaid member names</small></a>
+            </div></section>"""
             return self.out(app.page('Reports Centre', content, user))
         if path == '/dashboard-preview':
             user = self.need()
