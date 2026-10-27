@@ -1291,7 +1291,22 @@ class H(BaseHTTPRequestHandler):
   if path=='/compliance':
    c.close()
    records=compliance_records()
-   coaches=sorted(COACHING.get('coaches',{}).items(),key=lambda kv:kv[1].get('name',''))
+   def compliance_sort_key(kv):
+    key,coach=kv
+    record=records.get(key,{})
+    states=[]
+    for typ in ('garda','safeguarding'):
+     item=record.get(typ,{})
+     if not isinstance(item,dict):item={}
+     expiry=item.get('expiry') or (coach.get('garda_expiry') if typ=='garda' else '')
+     state,_=compliance_state(expiry)
+     states.append(state)
+    # Fully current first; then partial/expired; finally coaches with missing dates.
+    if all(x in ('valid','warning','urgent') for x in states):group=0
+    elif 'unknown' in states:group=2
+    else:group=1
+    return (group,str(coach.get('name','')).casefold())
+   coaches=sorted(COACHING.get('coaches',{}).items(),key=compliance_sort_key)
    summary={t:{k:0 for k in ('expired','urgent','warning','valid','unknown')} for t in ('garda','safeguarding')}
    rows=''
    def status_cell(key,typ,x):
@@ -1315,7 +1330,7 @@ class H(BaseHTTPRequestHandler):
    <div class="grid"><div class="card kpi"><div class="stat">{len(coaches)}</div><b>Coaches</b></div><div class="card kpi"><div class="stat">{g['expired']+g['urgent']+g['warning']}</div><b>Garda vetting alerts</b><small>Expired or within 90 days</small></div><div class="card kpi"><div class="stat">{sg['expired']+sg['urgent']+sg['warning']}</div><b>Safeguarding alerts</b><small>Expired or within 90 days</small></div><div class="card kpi"><div class="stat">{g['unknown']+sg['unknown']}</div><b>Missing expiry dates</b><small>Across both records</small></div></div>
    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:16px;align-items:start"><div class="card"><h3>90-day expiry alerts</h3><p><b>Garda vetting:</b> {g['expired']} expired · {g['urgent']} due within 30 days · {g['warning']} due in 31–90 days · {g['unknown']} dates missing</p><p><b>Safeguarding:</b> {sg['expired']} expired · {sg['urgent']} due within 30 days · {sg['warning']} due in 31–90 days · {sg['unknown']} dates missing</p><small>Expiry dates must be entered from actual records. No email notifications.</small></div><div class="card"><h3>Compliance Summary</h3>{page_charts}</div></div>
    <div class="card"><h3>Google Drive certificates</h3>{('<span class="badge valid">Google Drive connected</span> <a href="/google-oauth/start">Reconnect</a>' if load_google_oauth_token().get('refresh_token') else '<a class="btn" href="/google-oauth/start">Connect Google Drive</a>') if u['role']=='admin' else ''}<p class="muted">Both certificate types are stored in the existing Garda Vetting Google Drive folder.</p></div>
-   <div class="card"><h3>Coach documents and expiry dates</h3><div class="tw"><table><tr><th>Coach</th><th>Garda vetting certificate and expiry</th><th>Safeguarding certificate and expiry</th></tr>{rows}</table></div></div>"""
+   <div class="card"><h3>Coach documents and expiry dates</h3><p class="muted">Listed in order: fully compliant (both current), then expired/partial records, then coaches with missing expiry dates. Names are alphabetical within each group.</p><div class="tw"><table><tr><th>Coach</th><th>Garda vetting certificate and expiry</th><th>Safeguarding certificate and expiry</th></tr>{rows}</table></div></div>"""
    return self.out(page('Compliance',b,u))
   if path=='/compliance/file':
    c.close()
