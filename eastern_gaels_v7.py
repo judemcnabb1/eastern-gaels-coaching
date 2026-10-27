@@ -1381,7 +1381,7 @@ class H(BaseHTTPRequestHandler):
   if path=='/membership':
    c.close();ages=dict(sorted(DEMO.get('age_totals',{}).items(),key=lambda x:int(x[0][1:])));years=sorted((int(y) for y in DEMO.get('growth',{}) if str(y).isdigit()));latest=years[-1] if years else datetime.now().year;total=int(DEMO.get('growth',{}).get(str(latest),sum(ages.values())));cards=''.join(f'<a class="chartlink" href="/demographics/age?group={e(k)}"><div class="card kpi"><div class="stat">{int(v)}</div><b>{e(k)}</b><small>View player names & school</small></div></a>' for k,v in ages.items())
    b=f'''<div class="hero"><div><div class="eyebrow">Club population</div><h2>Membership</h2><p>Age-group membership with player-name drill-downs.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{total}</div><b>Total members</b><small>{latest}</small></div><div class="card kpi"><div class="stat">{len(ages)}</div><b>Age groups</b></div></div><div class="section-title"><h3>Members by age group</h3><span class="pill">Tap an age group</span></div><div class="grid">{cards}</div>''';return self.out(page('Membership',b,u))
-  if path=='/reports':
+  if path=='/schools-coaching':
    w,a=self.vis(u)
    ss=c.execute('select * from sessions '+w+' order by date,start',a).fetchall()
    total=len(ss);done=sum(x['actual_status']=='Completed' for x in ss);cancelled=sum(x['actual_status']=='Cancelled' for x in ss);closed=sum(x['actual_status']=='School Closed' for x in ss);scheduled=sum(x['actual_status']=='Scheduled' for x in ss);attendance=sum((x['attendance'] or 0) for x in ss if x['actual_status']=='Completed')
