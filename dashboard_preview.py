@@ -45,9 +45,11 @@ def render(coaches,records):
     warning=''.join(f'<tr><td>{e(name)}</td><td>{e("Garda Vetting" if v["kind"]=="garda" else "Safeguarding")}</td><td>{v["date"].strftime("%d %b %Y")}</td><td><span class="eg-status eg-due">{v["days"]} days</span></td></tr>' for name,v in alerts) or '<tr><td colspan="4">No certificates due within 90 days.</td></tr>'
     missing=''.join(f'<tr><td>{e(name)}</td><td>{e("Garda Vetting" if v["kind"]=="garda" else "Safeguarding")}</td><td><span class="eg-status eg-expired">{e(v["state"].title())}</span></td></tr>' for name,v in issues) or '<tr><td colspan="3">No missing or expired records.</td></tr>'
     fully=[r for r in rows if all(r[k]['state'] in ('current','due') for k in ('g','s'))]
-    others=[r for r in rows if r not in fully]
+    partial=[r for r in rows if sum(r[k]['state'] in ('current','due') for k in ('g','s')) == 1]
+    none=[r for r in rows if all(r[k]['state'] not in ('current','due') for k in ('g','s'))]
     fully_table=''.join(f'<tr><td><strong>{e(r["name"])}</strong></td><td>{cell(r["g"])}</td><td>{cell(r["s"])}</td></tr>' for r in fully) or '<tr><td colspan="3">No fully compliant coaches recorded.</td></tr>'
-    other_table=''.join(f'<tr><td><strong>{e(r["name"])}</strong></td><td>{cell(r["g"])}</td><td>{cell(r["s"])}</td></tr>' for r in others) or '<tr><td colspan="3">Everyone is fully compliant.</td></tr>'
+    partial_table=''.join(f'<tr><td><strong>{e(r["name"])}</strong></td><td>{cell(r["g"])}</td><td>{cell(r["s"])}</td></tr>' for r in partial) or '<tr><td colspan="3">No partially compliant coaches.</td></tr>'
+    none_table=''.join(f'<tr><td><strong>{e(r["name"])}</strong></td><td>{cell(r["g"])}</td><td>{cell(r["s"])}</td></tr>' for r in none) or '<tr><td colspan="3">No coaches in this category.</td></tr>'
     style="""<style>
     .eg-preview{font-family:Arial,sans-serif;color:#102f26;max-width:1180px;margin:0 auto;padding:12px 10px 36px}
     .eg-hero{background:linear-gradient(115deg,#003b29,#006b4a);color:white;border-bottom:5px solid #e9bb38;border-radius:14px;padding:28px;display:flex;justify-content:space-between;gap:15px;align-items:center;flex-wrap:wrap}
