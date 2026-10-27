@@ -17,6 +17,12 @@ def page_with_reports(title, body, user=None):
         body = '<div class="actions"><a class="btn" href="/reports/demographics">Open Demographics Report →</a> <a class="btn" href="/reports/schools">Open Schools Demographics Report →</a> <a class="btn" href="/reports/compliance">Open Compliance Report →</a></div>' + body
     if title == 'Reports' and user:
         body = '<div class="actions"><a class="btn" href="/reports/demographics">Open Demographics Report →</a> <a class="btn" href="/reports/schools">Open Schools Demographics Report →</a> <a class="btn" href="/reports/compliance">Open Compliance Report →</a></div>' + body
+    if title == 'Compliance' and user:
+        # Display-only compliance centre: retain original charts and certificate upload forms.
+        centre = render_dashboard_preview(app.COACHING.get('coaches', {}), app.compliance_records())
+        marker = '<div class="card"><h3>Google Drive certificates</h3>'
+        if marker in body:
+            body = body.replace(marker, centre + '<h2>Certificate Management</h2>' + marker, 1)
     html = _original_page(title, body, user)
     if user:
         html = html.replace('<span>Reports</span></a>', '<span>Reports Centre</span></a>')
