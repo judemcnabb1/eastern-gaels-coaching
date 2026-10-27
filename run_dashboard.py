@@ -26,6 +26,7 @@ def page_with_reports(title, body, user=None):
     html = _original_page(title, body, user)
     if user:
         html = html.replace('<span>Reports</span></a>', '<span>Reports Centre</span></a>')
+        html = html.replace('<span>Schools Schedule</span></a>', '<span>Schools Schedule</span></a><a href="/schools-coaching"><i>▦</i><span>Schools Coaching</span></a>', 1)
         # Dashboard 2.0: CSS-only shell refresh. Does not alter page logic or stored records.
         if title not in ('Demographics Report', 'Schools Demographics Report', 'Compliance Report'):
             html = html.replace('</head>', '<link rel="stylesheet" href="/dashboard-refresh.css?v=1"></head>', 1)
@@ -88,6 +89,28 @@ class ReportHandler(app.H):
             self.end_headers()
             self.wfile.write(image_bytes)
             return
+        if path == '/reports':
+            user = self.need()
+            if not user:
+                return
+            content = """<style>
+            .eg-report-hub{max-width:1120px;margin:25px auto 50px;text-align:center}
+            .eg-report-hub h2{font-size:34px;color:#064b34;margin:12px 0}
+            .eg-report-hub p{color:#617568;font-size:15px}
+            .eg-report-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin:35px 0}
+            .eg-report-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:310px;padding:30px 18px;background:#fff;border:1px solid #d9e8df;border-top:7px solid #e6b62e;border-radius:20px;text-decoration:none;color:#074b34;box-shadow:0 12px 32px #103e2614;transition:transform .2s,box-shadow .2s}
+            .eg-report-tile:hover{transform:translateY(-6px);box-shadow:0 18px 40px #103e2626}
+            .eg-report-icon{width:105px;height:105px;border-radius:26px;display:grid;place-items:center;background:linear-gradient(135deg,#e3f7e9,#f8f1d9);font-size:55px;margin-bottom:25px}
+            .eg-report-tile strong{font-size:21px;line-height:1.3}
+            .eg-report-tile small{font-size:13px;color:#60756b;margin-top:12px}
+            @media(max-width:900px){.eg-report-tiles{grid-template-columns:1fr}.eg-report-tile{min-height:230px}}
+            </style><section class="eg-report-hub"><p>EASTERN GAELS · REPORTING</p><h2>Reports Centre</h2><p>Select one of the three existing reports to view or download.</p>
+            <div class="eg-report-tiles">
+            <a class="eg-report-tile" href="/reports/demographics"><span class="eg-report-icon" aria-hidden="true">◉</span><strong>Demographics Report</strong><small>Club membership and population insights</small></a>
+            <a class="eg-report-tile" href="/reports/schools"><span class="eg-report-icon" aria-hidden="true">▦</span><strong>Schools Demographics Report</strong><small>Schools and coaching programme insights</small></a>
+            <a class="eg-report-tile" href="/reports/compliance"><span class="eg-report-icon" aria-hidden="true">✓</span><strong>Compliance Report</strong><small>Garda Vetting and Safeguarding</small></a>
+            </div></section>"""
+            return self.out(app.page('Reports Centre', content, user))
         if path == '/dashboard-preview':
             user = self.need()
             if not user:
