@@ -89,6 +89,43 @@ class ReportHandler(app.H):
             self.end_headers()
             self.wfile.write(image_bytes)
             return
+        if path == '/reports/paid-membership':
+            user = self.need()
+            if not user:
+                return
+            from html import escape
+            demo = app.DEMO
+            juvenile = demo.get('players_by_age', {})
+            adults = demo.get('adult_payment', {})
+            age_keys = sorted(juvenile, key=lambda v: (int(v[1:]) if v[1:].isdigit() else 999, v))
+            groups = [(name, juvenile[name]) for name in age_keys] + list(adults.items())
+            members = [m for _, group in groups for m in group]
+            paid = sum(m.get('paid') == 'YES' for m in members)
+            unpaid = sum(m.get('paid') == 'NO' for m in members)
+            unknown = len(members) - paid - unpaid
+            known = paid + unpaid
+            rate = round(100 * paid / known, 1) if known else 0
+            cards = []
+            for name, group in groups:
+                yes = sum(m.get('paid') == 'YES' for m in group)
+                no = sum(m.get('paid') == 'NO' for m in group)
+                other = len(group) - yes - no
+                total = len(group)
+                yp = yes * 100 / total if total else 0
+                np = (yes + no) * 100 / total if total else 0
+                names = ''.join('<li>' + escape(str(m.get('name') or 'Name not recorded')) + '</li>' for m in group if m.get('paid') == 'NO')
+                names = '<ul>' + names + '</ul>' if names else '<p class="pm-clear">No unpaid members recorded</p>'
+                cards.append(f'<article class="pm-card"><h3>{escape(str(name))}</h3><div class="pm-card-body"><div class="pm-pie" style="background:conic-gradient(#11834d 0 {yp:.2f}%,#e8a63b {yp:.2f}% {np:.2f}%,#cbd5d1 {np:.2f}% 100%)"><span>{total}<small>members</small></span></div><div class="pm-numbers"><b>Paid: {yes}</b><b>Not paid: {no}</b><b>Not recorded: {other}</b></div></div><h4>Names not paid ({no})</h4>{names}</article>')
+            content = f"""<style>
+            .pm-report{{max-width:1220px;margin:15px auto 60px}}.pm-report h2{{font-size:32px;color:#064b34;margin:6px 0}}.pm-lead{{color:#5e7267;font-size:15px}}
+            .pm-stats{{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:24px 0}}.pm-stat{{background:#fff;border:1px solid #e0e9e3;border-radius:16px;padding:22px;box-shadow:0 7px 18px #103e2610}}.pm-stat strong{{display:block;font-size:33px;color:#075a38}}.pm-stat span{{color:#5d7066;font-weight:650}}
+            .pm-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}}.pm-card{{background:white;border:1px solid #dce7df;border-radius:18px;padding:22px;box-shadow:0 10px 24px #103e2610}}.pm-card h3{{font-size:20px;color:#075438;border-bottom:2px solid #f0c54b;padding-bottom:12px}}.pm-card h4{{margin:22px 0 8px;color:#203d2d}}.pm-card-body{{display:flex;align-items:center;gap:30px;flex-wrap:wrap}}.pm-pie{{width:170px;height:170px;flex:none;border-radius:50%;display:grid;place-items:center;box-shadow:0 10px 22px #0c3a221c}}.pm-pie>span{{width:102px;height:102px;border-radius:50%;background:white;display:flex;flex-direction:column;justify-content:center;align-items:center;font-size:29px;font-weight:850;color:#075438}}.pm-pie small{{font-size:11px;font-weight:500;color:#69766e}}.pm-numbers{{display:grid;gap:13px}}.pm-numbers b:nth-child(1){{color:#11834d}}.pm-numbers b:nth-child(2){{color:#a66b13}}.pm-numbers b:nth-child(3){{color:#6e7d76}}.pm-card ul{{columns:2;padding-left:22px;line-height:1.9}}.pm-clear{{color:#11834d}}.pm-key{{display:flex;gap:20px;flex-wrap:wrap;margin:18px 0}}.pm-key span:before{{content:"";display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:7px;background:var(--c)}}@media(max-width:900px){{.pm-grid{{grid-template-columns:1fr}}.pm-stats{{grid-template-columns:repeat(2,1fr)}}}}@media print{{.sidebar,header,.pm-back{{display:none!important}}main{{margin:0!important}}.pm-card{{break-inside:avoid}}}}
+            </style><section class="pm-report"><a class="pm-back" href="/reports">← Reports Centre</a><p class="pm-lead">EASTERN GAELS · MEMBERSHIP REPORT</p><h2>Paid Membership Report</h2><p class="pm-lead">Payment status across imported active age-group, senior and non-playing membership records.</p>
+            <div class="pm-stats"><div class="pm-stat"><strong>{len(members)}</strong><span>Total member records</span></div><div class="pm-stat"><strong>{paid}</strong><span>Paid members</span></div><div class="pm-stat"><strong>{unpaid}</strong><span>Not paid</span></div><div class="pm-stat"><strong>{rate}%</strong><span>Paid of recorded YES/NO statuses</span></div></div>
+            <div class="pm-key"><span style="--c:#11834d">Paid</span><span style="--c:#e8a63b">Not paid</span><span style="--c:#cbd5d1">Not recorded</span></div>
+            <p class="pm-lead">{unknown} records have no confirmed YES/NO status and are not classified as unpaid. Figures are counts of imported member records, not euro amounts.</p>
+            <div class="pm-grid">{''.join(cards)}</div></section>"""
+            return self.out(app.page('Paid Membership Report', content, user))
         if path == '/reports':
             user = self.need()
             if not user:
@@ -97,7 +134,7 @@ class ReportHandler(app.H):
             .eg-report-hub{max-width:1120px;margin:25px auto 50px;text-align:center}
             .eg-report-hub h2{font-size:34px;color:#064b34;margin:12px 0}
             .eg-report-hub p{color:#617568;font-size:15px}
-            .eg-report-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin:35px 0}
+            .eg-report-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin:35px 0}
             .eg-report-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:310px;padding:30px 18px;background:#fff;border:1px solid #d9e8df;border-top:7px solid #e6b62e;border-radius:20px;text-decoration:none;color:#074b34;box-shadow:0 12px 32px #103e2614;transition:transform .2s,box-shadow .2s}
             .eg-report-tile:hover{transform:translateY(-6px);box-shadow:0 18px 40px #103e2626}
             .eg-report-icon{width:105px;height:105px;border-radius:26px;display:grid;place-items:center;background:linear-gradient(135deg,#e3f7e9,#f8f1d9);font-size:55px;margin-bottom:25px}
@@ -109,7 +146,7 @@ class ReportHandler(app.H):
             <a class="eg-report-tile" href="/reports/demographics"><span class="eg-report-icon" aria-hidden="true">◉</span><strong>Demographics Report</strong><small>Club membership and population insights</small></a>
             <a class="eg-report-tile" href="/reports/schools"><span class="eg-report-icon" aria-hidden="true">▦</span><strong>Schools Demographics Report</strong><small>Schools and coaching programme insights</small></a>
             <a class="eg-report-tile" href="/reports/compliance"><span class="eg-report-icon" aria-hidden="true">✓</span><strong>Compliance Report</strong><small>Garda Vetting and Safeguarding</small></a>
-            </div></section>"""
+            <a class="eg-report-tile" href="/reports/paid-membership"><span class="eg-report-icon" aria-hidden="true">€</span><strong>Paid Membership Report</strong><small>Payment status by age group and unpaid member names</small></a>\n            </div></section>"""
             return self.out(app.page('Reports Centre', content, user))
         if path == '/dashboard-preview':
             user = self.need()
