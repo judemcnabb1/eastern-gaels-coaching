@@ -9,6 +9,7 @@ from demographics_styled_pdf import build_styled_pdf
 from schools_report import summary as schools_summary, render as render_schools, pdf as schools_pdf
 from compliance_report import render as render_compliance, pdf as compliance_pdf
 from dashboard_preview import render as render_dashboard_preview
+from paid_membership_pdf import build_pdf as build_paid_membership_pdf
 
 _original_page = app.page
 
@@ -89,6 +90,23 @@ class ReportHandler(app.H):
             self.end_headers()
             self.wfile.write(image_bytes)
             return
+        if path == '/reports/paid-membership.pdf':
+            user = self.need()
+            if not user:
+                return
+            try:
+                content = build_paid_membership_pdf(app.DEMO, app.BASE)
+            except Exception as exc:
+                self.send_error(503, 'Paid membership PDF unavailable: ' + str(exc)[:120])
+                return
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/pdf')
+            self.send_header('Content-Disposition', 'attachment; filename="Eastern-Gaels-Paid-Membership-2026.pdf"')
+            self.send_header('Content-Length', str(len(content)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(content)
+            return
         if path == '/reports/paid-membership':
             user = self.need()
             if not user:
@@ -120,7 +138,7 @@ class ReportHandler(app.H):
             .pm-report{{max-width:1220px;margin:15px auto 60px}}.pm-report h2{{font-size:32px;color:#064b34;margin:6px 0}}.pm-lead{{color:#5e7267;font-size:15px}}
             .pm-stats{{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:24px 0}}.pm-stat{{background:#fff;border:1px solid #e0e9e3;border-radius:16px;padding:22px;box-shadow:0 7px 18px #103e2610}}.pm-stat strong{{display:block;font-size:33px;color:#075a38}}.pm-stat span{{color:#5d7066;font-weight:650}}
             .pm-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}}.pm-card{{background:white;border:1px solid #dce7df;border-radius:18px;padding:22px;box-shadow:0 10px 24px #103e2610}}.pm-card h3{{font-size:20px;color:#075438;border-bottom:2px solid #f0c54b;padding-bottom:12px}}.pm-card h4{{margin:22px 0 8px;color:#203d2d}}.pm-card-body{{display:flex;align-items:center;gap:30px;flex-wrap:wrap}}.pm-pie{{width:170px;height:170px;flex:none;border-radius:50%;display:grid;place-items:center;box-shadow:0 10px 22px #0c3a221c}}.pm-pie>span{{width:102px;height:102px;border-radius:50%;background:white;display:flex;flex-direction:column;justify-content:center;align-items:center;font-size:29px;font-weight:850;color:#075438}}.pm-pie small{{font-size:11px;font-weight:500;color:#69766e}}.pm-numbers{{display:grid;gap:13px}}.pm-numbers b:nth-child(1){{color:#11834d}}.pm-numbers b:nth-child(2){{color:#a66b13}}.pm-numbers b:nth-child(3){{color:#6e7d76}}.pm-card ul{{columns:2;padding-left:22px;line-height:1.9}}.pm-clear{{color:#11834d}}.pm-key{{display:flex;gap:20px;flex-wrap:wrap;margin:18px 0}}.pm-key span:before{{content:"";display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:7px;background:var(--c)}}@media(max-width:900px){{.pm-grid{{grid-template-columns:1fr}}.pm-stats{{grid-template-columns:repeat(2,1fr)}}}}@media print{{.sidebar,header,.pm-back{{display:none!important}}main{{margin:0!important}}.pm-card{{break-inside:avoid}}}}
-            </style><section class="pm-report"><a class="pm-back" href="/reports">← Reports Centre</a><p class="pm-lead">EASTERN GAELS · MEMBERSHIP REPORT</p><h2>Paid Membership Report</h2><p class="pm-lead">Payment status across imported active age-group, senior and non-playing membership records.</p>
+            </style><section class="pm-report"><a class="pm-back" href="/reports">← Reports Centre</a> &nbsp; <a class="btn" href="/reports/paid-membership.pdf">⬇ Download PDF</a><p class="pm-lead">EASTERN GAELS · MEMBERSHIP REPORT</p><h2>Paid Membership Report</h2><p class="pm-lead">Payment status across imported active age-group, senior and non-playing membership records.</p>
             <div class="pm-stats"><div class="pm-stat"><strong>{len(members)}</strong><span>Total member records</span></div><div class="pm-stat"><strong>{paid}</strong><span>Paid members</span></div><div class="pm-stat"><strong>{unpaid}</strong><span>Not paid</span></div><div class="pm-stat"><strong>{rate}%</strong><span>Paid of recorded YES/NO statuses</span></div></div>
             <div class="pm-key"><span style="--c:#11834d">Paid</span><span style="--c:#e8a63b">Not paid</span><span style="--c:#cbd5d1">Not recorded</span></div>
             <p class="pm-lead">{unknown} records have no confirmed YES/NO status and are not classified as unpaid. Figures are counts of imported member records, not euro amounts.</p>
