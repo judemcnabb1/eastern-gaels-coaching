@@ -21,7 +21,7 @@ def build_pdf(demo, base):
     juvenile=demo.get('players_by_age', {})
     adults=demo.get('adult_payment', {})
     age_keys=sorted(juvenile, key=lambda v:(int(v[1:]) if v[1:].isdigit() else 999,str(v)))
-    groups=[(name,juvenile[name]) for name in age_keys]+list(adults.items())
+    groups=[(('U13' if str(name).strip().upper()=='U1' else name),juvenile[name]) for name in age_keys]+list(adults.items())
     members=[m for _, group in groups for m in group]
     counts=Counter(m.get('paid') for m in members)
     paid=counts['YES']; unpaid=counts['NO']; unknown=len(members)-paid-unpaid
@@ -41,7 +41,7 @@ def build_pdf(demo, base):
     pct=f'{100*paid/known:.1f}%' if known else 'N/A'
     summary=[['Total member records','Paid','Not paid','Not recorded'],[str(len(members)),str(paid),str(unpaid),str(unknown)]]
     t=Table(summary,colWidths=[130,100,100,110],rowHeights=[32,42])
-    t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),GREEN),('TEXTCOLOR',(0,0),(-1,0),colors.white),('TEXTCOLOR',(0,1),(-1,1),GREEN),('FONTNAME',(0,1),(-1,1),'Helvetica-Bold'),('FONTSIZE',(0,1),(-1,1),18),('ALIGN',(0,0),(-1,-1),'CENTER'),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('BOTTOMPADDING',(0,0),(-1,-1),8),('LINEBELOW',(0,-1),(-1,-1),1,GOLD)]))
+    t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),GREEN),('TEXTCOLOR',(0,0),(-1,0),colors.white),('TEXTCOLOR',(0,1),(-1,1),GREEN),('FONTNAME',(0,1),(-1,1),'Helvetica-Bold'),('FONTSIZE',(0,1),(-1,1),18),('ALIGN',(0,0),(-1,-1),'CENTER'),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('BOTTOMPADDING',(0,0),(-1,-1),8),('LINEBELOW',(0,-1),(-1,-1),4,GOLD),('BACKGROUND',(0,1),(-1,1),colors.HexColor('#eaf4ed'))]))
     story.append(t)
     story.append(Spacer(1,16))
     story.append(Paragraph(f'<b>{pct}</b> of members with a recorded YES/NO payment status are paid.',styles['BodyText']))
@@ -49,7 +49,7 @@ def build_pdf(demo, base):
     for name,group in groups:
         cc=Counter(m.get('paid') for m in group)
         yes=cc['YES']; no=cc['NO']; other=len(group)-yes-no
-        section=[Paragraph(escape(str(name)),styles['EGSection'])]
+        section=[Paragraph('◆  '+escape(str(name))+'  |  MEMBERSHIP STATUS',styles['EGSection'])]
         pie=Pie()
         pie.x=5;pie.y=5;pie.width=120;pie.height=120
         pie.data=[yes,no,other] if len(group) else [1]
@@ -58,7 +58,7 @@ def build_pdf(demo, base):
             if i<len(pie.data):pie.slices[i].fillColor=col
         drawing=Drawing(140,135);drawing.add(pie)
         details=Paragraph(f'<b>Members:</b> {len(group)}<br/><font color="#075438">Paid: {yes}</font><br/><font color="#9d6718">Not paid: {no}</font><br/>Not recorded: {other}',styles['BodyText'])
-        section.append(Table([[drawing,details]],colWidths=[160,290]))
+        panel=Table([[drawing,details]],colWidths=[160,290]);panel.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#eff7f1')),('BOX',(0,0),(-1,-1),1,colors.HexColor('#bed8c5')),('LEFTPADDING',(0,0),(-1,-1),14),('TOPPADDING',(0,0),(-1,-1),10),('BOTTOMPADDING',(0,0),(-1,-1),10)]));section.append(panel)
         names=[str(m.get('name') or 'Name not recorded') for m in group if m.get('paid')=='NO']
         section.append(Paragraph('<b>Members recorded as not paid:</b>',styles['EGSmall']))
         if names:
