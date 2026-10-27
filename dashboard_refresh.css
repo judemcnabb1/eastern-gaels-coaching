@@ -1,0 +1,21 @@
+/* Eastern Gaels Dashboard 2.0 — presentation-only enhancements.
+   No data, forms, URLs, scripts, or report generation changes. */
+:root{--bg:#f2f7f4;--line:#dce8e0;--green:#075136;--green2:#087249;--gold:#f0c348;--ink:#132e25;--muted:#647b70}
+body{background:linear-gradient(180deg,#edf5f0 0,#f7faf8 340px)!important}
+.sidebar{background:linear-gradient(165deg,#00452f 0%,#063e2d 48%,#02291e 100%)!important;border-right:2px solid #d5a935;box-shadow:7px 0 25px #073e2817!important}
+.sidebar .brand{border-bottom:1px solid #ffffff30}
+.side-nav a{border:1px solid transparent;transition:background .16s ease,color .16s ease,border-color .16s ease!important}
+.side-nav a:hover,.side-nav a:focus-visible{background:#ffffff20!important;border-color:#ffffff2b!important;transform:none!important}
+.side-nav a[href="/dashboard-preview"]{background:#eac451!important;color:#073d2b!important;font-weight:800!important}
+main .card,.card,.panel,.stat-card,.metric-card{border-radius:15px!important;box-shadow:0 6px 22px #063e2810!important;border-color:#dce9e1!important}
+main .card:hover,.card:hover{box-shadow:0 9px 28px #063e2817!important}
+h1,h2,h3{letter-spacing:-.025em}
+table{border-collapse:collapse}
+table th{letter-spacing:.015em}
+table tbody tr{transition:background-color .12s ease}
+table tbody tr:hover{background-color:#eff8f2}
+.btn,button{transition:background-color .16s ease,box-shadow .16s ease}
+.btn:focus-visible,button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #e6b53d!important;outline-offset:2px}
+input,select,textarea{border-radius:9px}
+@media(max-width:760px){main .card,.card,.panel{border-radius:11px!important}}
+@media print{body{background:white!important}.sidebar{box-shadow:none!important}main .card,.card,.panel{box-shadow:none!important}}
