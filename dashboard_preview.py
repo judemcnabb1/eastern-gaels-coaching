@@ -2,7 +2,7 @@
 from datetime import date
 from html import escape
 
-def render(coaches,records):
+def render(coaches,records,embedded=False):
     today=date.today()
     rows=[]
     for key,c in sorted(coaches.items(),key=lambda item:str(item[1].get('name','')).casefold()):
@@ -74,7 +74,7 @@ def render(coaches,records):
     @media(max-width:900px){.eg-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.eg-grid{grid-template-columns:1fr}.eg-three{grid-template-columns:1fr}}
     @media(max-width:500px){.eg-kpis{grid-template-columns:1fr 1fr}.eg-hero h1{font-size:23px}.eg-kpi{padding:12px}.eg-kpi strong{font-size:25px}}
     </style>"""
-    html=style+'<div class="eg-preview"><section class="eg-hero"><div><small>EASTERN GAELS · DASHBOARD DESIGN PREVIEW</small><h1>Coaching Compliance Centre</h1><p>Live Garda Vetting &amp; Safeguarding status · '+today.strftime('%d %B %Y')+'</p></div><a href="/reports/compliance">Existing Compliance Report</a></section>'
+    html=style+'<div class="eg-preview"><section class="eg-hero"><div><small>EASTERN GAELS · COMPLIANCE CENTRE</small><h1>Coaching Compliance Centre</h1><p>Live Garda Vetting &amp; Safeguarding status · '+today.strftime('%d %B %Y')+'</p></div><a href="/reports/compliance">Existing Compliance Report</a></section>'
     html+='<div class="eg-kpis">'
     for label,value,detail in [('Garda vetted',pct('g'),f'{count("g")} of {n} coaches'),('Safeguarding',pct('s'),f'{count("s")} of {n} coaches'),('Due within 90 days',str(len(alerts)),'Certificate renewals'),('Coaches',str(n),'Total coach records')]:
         html+=f'<div class="eg-kpi"><span>{e(label)}</span><strong>{e(value)}</strong><small>{e(detail)}</small></div>'
@@ -83,5 +83,5 @@ def render(coaches,records):
     html+='<section class="eg-panel"><h2>No Compliance · '+str(len(none))+'</h2><p class="eg-note">Neither requirement confirmed current.</p><table><thead><tr><th>Coach</th><th>Garda</th><th>Safeguarding</th></tr></thead><tbody class="eg-coach-group">'+none_table+'</tbody></table></section></div>'
     html+='<section class="eg-panel"><h2>Compliance Expiry Dates Due · Next 90 days</h2><table><thead><tr><th>Coach</th><th>Requirement</th><th>Expiry</th><th>Days</th></tr></thead><tbody>'+warning+'</tbody></table></section>'
     html+='''<script>function egFilter(){var q=document.getElementById("eg-coach-search").value.trim().toLowerCase();document.querySelectorAll(".eg-coach-group tr").forEach(function(r){r.style.display=!q||r.cells[0].textContent.toLowerCase().includes(q)?"":"none";});}</script>'''
-    html+='<p class="eg-note">Preview only: existing data, forms, permissions and all three downloadable reports are unchanged. Compliance percentages require a current certificate expiry date. Missing dates remain flagged for confirmation.</p></div>'
+    html+='<p class="eg-note">Existing data, forms, permissions and all three downloadable reports are unchanged. Compliance percentages require a current certificate expiry date. Missing dates remain flagged for confirmation.</p></div>'
     return html
