@@ -1278,15 +1278,40 @@ class H(BaseHTTPRequestHandler):
     mx=max([int(v) for v in data.values()] or [1]);return ''.join(f'<div class="barrow"><b>{e(k)}</b><div class="bartrack"><div class="barfill" style="width:{int(v)*100/mx:.0f}%"></div></div><b>{int(v)}</b></div>' for k,v in data.items())
    players=DEMO.get('players_by_age',{}).get(g,[]);prows=''.join(f'<tr><td>{e(x.get("name",""))}</td><td>{e(x.get("school",""))}</td></tr>' for x in players);plist=(f'<div class="card"><h3>{e(g)} Players</h3><p class="muted">{len(players)} player names imported. Only player name and school are stored/displayed.</p><div class="tw"><table><tr><th>Player Name</th><th>School</th></tr>{prows}</table></div></div>' if players else '<div class="card"><h3>Players</h3><p class="muted">No player-name list has been imported for this age group yet.</p></div>');total=int(DEMO['age_totals'][g]);b=f'''<div class="actions"><a class="btn secondary" href="/demographics">← Demographics</a></div><h2>{e(g)} Demographics</h2><div class="card kpi"><div class="stat">{total}</div><b>{e(g)} players</b><small>2026</small></div>{plist}<div class="grid"><div class="card"><h3>Residential catchment</h3>{bars2(DEMO['age_areas'][g])}</div><div class="card"><h3>School breakdown</h3>{bars2(DEMO['age_schools'][g])}</div></div><div class="card"><p class="muted">Figures are imported from the updated Eastern Gaels demographics workbook. Zero-value categories are retained so the source structure remains visible.</p></div>''';return self.out(page(g+' Demographics',b,u))
   if path=='/coaching-team':
-   c.close();coaches=list(COACHING.get('coaches',{}).values());teams=COACHING.get('teams',{});buckets={'expired':0,'urgent':0,'warning':0,'unknown':0,'unknown_expiry':0,'not_vetted':0,'valid':0}
-   for x in coaches:buckets[expiry_bucket(x)[0]]+=1
-   vetted=sum(str(x.get('garda_vetted',x.get('garda_status',''))).strip().upper()=='YES' for x in coaches);safe=sum(str(x.get('safeguarding','')).strip().upper()=='YES' for x in coaches);qual=sum(str(x.get('qualification','')).strip().upper() not in ('','UNKNOWN','NONE','NO') for x in coaches);rows='';order={'expired':0,'urgent':1,'warning':2,'unknown_expiry':3,'not_vetted':4,'unknown':5,'valid':6}
-   labels={'expired':'Expired','urgent':'Expires <=90 days','warning':'Expires <=180 days','unknown_expiry':'Vetted - expiry missing','not_vetted':'Not vetted','unknown':'Vetting unknown','valid':'Vetted / valid'}
-   for x in sorted(coaches,key=lambda z:(order[expiry_bucket(z)[0]],z.get('name',''))):
-    bucket,days=expiry_bucket(x);expiry=x.get('garda_expiry_text') or x.get('garda_expiry') or '-';detail=('Expired '+str(abs(days))+' days ago' if bucket=='expired' and days is not None else (str(days)+' days remaining' if days is not None else expiry));sv=str(x.get('safeguarding','Unknown'));qv=str(x.get('qualification','Unknown'))
-    rows+=f'<tr><td><b>{e(x.get("name"))}</b></td><td>{e(x.get("garda_vetted",x.get("garda_status","Unknown")))}</td><td><span class="badge {bucket}">{labels[bucket]}</span><br><small>{e(detail)}</small></td><td>{e(sv)}</td><td>{e(qv)}</td><td>{e(", ".join(x.get("teams",[])))}</td></tr>'
+   c.close()
+   coaches=COACHING.get('coaches',{})
+   teams=COACHING.get('teams',{})
+   records=compliance_records()
+   qual=sum(str(x.get('qualification','')).strip().upper() not in ('','UNKNOWN','NONE','NO') for x in coaches.values())
+   counts={typ:{state:0 for state in ('expired','urgent','warning','valid','unknown')} for typ in ('garda','safeguarding')}
+   def coaching_compliance(key,coach,typ):
+    item=records.get(key,{}).get(typ,{})
+    if not isinstance(item,dict):item={}
+    expiry=item.get('expiry','')
+    if not expiry and typ=='garda':
+     expiry=coach.get('garda_expiry','') or ''
+     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',str(expiry)):expiry=''
+    state,days=compliance_state(expiry)
+    msg=('Expired '+str(-days)+' days ago' if days is not None and days<0 else str(days)+' days remaining' if days is not None else 'Date missing')
+    return state,expiry,msg
+   def coaching_sort(kv):
+    key,coach=kv
+    states=[coaching_compliance(key,coach,t)[0] for t in ('garda','safeguarding')]
+    group=0 if all(x in ('valid','warning','urgent') for x in states) else 2 if 'unknown' in states else 1
+    return group,str(coach.get('name','')).casefold()
+   rows=''
+   for key,x in sorted(coaches.items(),key=coaching_sort):
+    cells=[]
+    for typ in ('garda','safeguarding'):
+     state,expiry,msg=coaching_compliance(key,x,typ)
+     counts[typ][state]+=1
+     cells.append(f'<td>{e(expiry or "Not recorded")}<div><span class="badge {state}">{e(msg)}</span></div></td>')
+    rows+=f'<tr><td><b>{e(x.get("name",""))}</b></td>{"".join(cells)}<td>{e(x.get("qualification","Unknown"))}</td><td>{e(", ".join(x.get("teams",[])))}</td></tr>'
+   vetted=sum(counts['garda'][k] for k in ('valid','warning','urgent'))
+   safe=sum(counts['safeguarding'][k] for k in ('valid','warning','urgent'))
+   alerts=sum(counts[t][k] for t in ('garda','safeguarding') for k in ('expired','urgent','warning'))
    teamcards=''.join(f'<div class="card"><h3>{e(k)}</h3><div class="stat">{len(v)}</div><div class="muted">coaches</div><p>{e(", ".join(v))}</p></div>' for k,v in teams.items())
-   b=f'''<div class="eyebrow">People & teams</div><h2>Coaches & Teams</h2><p class="muted">Garda Vetting and Safeguarding are tracked independently. Vetting expiry warnings apply only when Garda Vetted is Yes.</p><div class="grid"><div class="card kpi"><div class="stat">{len(coaches)}</div><b>Total coaches</b></div><div class="card kpi"><div class="stat">{vetted}</div><b>Garda vetted</b><small>of {len(coaches)}</small></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding completed</b><small>of {len(coaches)}</small></div><div class="card kpi"><div class="stat">{qual}</div><b>Qualified coaches</b></div><div class="card kpi"><div class="stat">{buckets['expired']+buckets['urgent']}</div><b>Vetting expiry action</b><small>expired / within 90 days</small></div></div><div class="card"><h3>Coach compliance</h3><div class="tw"><table><tr><th>Coach</th><th>Garda Vetted</th><th>Vetting Expiry</th><th>Safeguarding</th><th>Qualification</th><th>Teams</th></tr>{rows}</table></div></div><h3>Coaching pool</h3><div class="grid">{teamcards}</div>'''
+   b=f'''<div class="eyebrow">People & teams</div><h2>Coaches & Teams</h2><p class="muted">Garda vetting and safeguarding status and expiry dates use the same live certificate records and 90-day alerts as the <a href="/compliance">Compliance page</a>. A missing expiry date is not counted as current.</p><div class="grid"><div class="card kpi"><div class="stat">{len(coaches)}</div><b>Total coaches</b></div><div class="card kpi"><div class="stat">{vetted}</div><b>Garda current</b><small>of {len(coaches)}</small></div><div class="card kpi"><div class="stat">{safe}</div><b>Safeguarding current</b><small>of {len(coaches)}</small></div><div class="card kpi"><div class="stat">{qual}</div><b>Qualified coaches</b></div><div class="card kpi"><div class="stat">{alerts}</div><b>Compliance alerts</b><small>Expired / within 90 days, both types</small></div></div><div class="card"><h3>Coach compliance</h3><div class="tw"><table><tr><th>Coach</th><th>Garda vetting expiry / status</th><th>Safeguarding expiry / status</th><th>Qualification</th><th>Teams</th></tr>{rows}</table></div></div><h3>Coaching pool</h3><div class="grid">{teamcards}</div>'''
    return self.out(page('Coaching Team',b,u))
   if path=='/compliance':
    c.close()
