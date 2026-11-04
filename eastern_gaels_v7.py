@@ -1493,7 +1493,9 @@ class H(BaseHTTPRequestHandler):
     try:drive_id=certificate_drive_upload(typ,data,ext)
     except Exception as ex:
      print('Certificate upload error:',type(ex).__name__,str(ex))
-     return self.send_error(502,'Google Drive upload failed; certificate record was not changed')
+     if 'Google OAuth token refresh failed (HTTP 400)' in str(ex) or 'Google Drive not connected' in str(ex):
+      return self.out(page('Google Drive Reconnection Required','<div class="card"><h2>Reconnect Google Drive</h2><p>Google rejected the saved connection. The certificate was not uploaded and your existing certificate record and expiry date were not changed.</p><p>Reconnect your Google account, then return to Compliance and upload the certificate again.</p><div class="actions"><a class="btn" href="/google-oauth/start">Reconnect Google Drive</a> <a class="btn" href="/compliance">Back to Compliance</a></div></div>',u),503)
+     return self.send_error(502,'Google Drive upload failed; certificate record was not changed. Check the server logs or reconnect Google Drive.')
     record['drive_file_id']=drive_id
     record['extension']=ext
     record.pop('file',None)
