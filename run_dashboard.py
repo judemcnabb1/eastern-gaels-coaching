@@ -107,6 +107,22 @@ class ReportHandler(app.H):
             self.end_headers()
             self.wfile.write(content)
             return
+        if path == '/reports/insurance-injuries.pdf':
+            user = self.need()
+            if not user:
+                return
+            try:
+                from insurance_injury_pdf import build_pdf as build_insurance_pdf
+                content = build_insurance_pdf(app.DEMO, app.BASE)
+            except Exception as exc:
+                return self.send_error(503, 'Insurance and injury PDF unavailable: ' + str(exc)[:140])
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/pdf')
+            self.send_header('Content-Disposition', 'attachment; filename="Eastern-Gaels-Insurance-and-Injury-Claims.pdf"')
+            self.send_header('Content-Length', str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
         if path == '/reports/paid-membership':
             user = self.need()
             if not user:
