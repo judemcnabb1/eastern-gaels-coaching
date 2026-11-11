@@ -8,8 +8,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
-from reportlab.graphics.shapes import Drawing, Wedge, String, Ellipse
-from reportlab.graphics import renderPDF
+from reportlab.graphics.shapes import Drawing, String, Ellipse
 
 GREEN=colors.HexColor('#075438')
 GOLD=colors.HexColor('#d9a62c')
