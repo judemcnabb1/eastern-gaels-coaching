@@ -429,7 +429,7 @@ def parse_demographics_xlsx(path):
  # Adult payment status: only numbered names below the membership-list header.
  adult_payment={}
  for category,prefix in [('Non-playing adults','Senior Adult Non Playing Member'),('Senior ladies','Senior Adult Ladies Members'),('Senior men','Senior Adult Mens Members')]:
-  aws=next((wb[n] for n in names if clean_name(n).startswith(clean_name(prefix))),None);records=[];in_list=False;pay_col=3;insurance_col=None
+  aws=next((wb[n] for n in names if clean_name(n).startswith(clean_name(prefix))),None);records=[];in_list=False;pay_col=3;insurance_col=None;injury_cols={}
   if aws is None:
    adult_payment[category]=[]
    continue
@@ -440,6 +440,11 @@ def parse_demographics_xlsx(path):
     for idx,v in enumerate(vals):
      if 'PAID MEMBER' in clean_name(v):pay_col=idx+1
      if 'PRIVATE MEDICAL INSURANCE' in clean_name(v):insurance_col=idx+1
+     heading=clean_name(v)
+     if heading.startswith('INJURY CLAIMS DESCRIPTION'):injury_cols['description']=idx+1
+     elif heading.startswith('INJURY CLAIMS DATE'):injury_cols['date']=idx+1
+     elif heading=='CLAIM AMOUNT':injury_cols['claim_amount']=idx+1
+     elif heading=='SHORTFALL CLAIM AMOUNT':injury_cols['shortfall_amount']=idx+1
     continue
    if not in_list:continue
    number=vals[0] if vals else None
@@ -448,7 +453,7 @@ def parse_demographics_xlsx(path):
    if not valid or not name:continue
    paid=clean_name(vals[pay_col-1]) if len(vals)>=pay_col else ''
    insurance=clean_name(vals[insurance_col-1]) if insurance_col and len(vals)>=insurance_col else ''
-   records.append({'name':' '.join(str(vals[1]).split()),'paid':paid if paid in ('YES','NO') else 'NOT RECORDED','private_medical_insurance':insurance if insurance in ('YES','NO') else 'NOT RECORDED'})
+   records.append({'name':' '.join(str(vals[1]).split()),'paid':paid if paid in ('YES','NO') else 'NOT RECORDED','private_medical_insurance':insurance if insurance in ('YES','NO') else 'NOT RECORDED','injury':{field:(str(vals[col-1]).strip() if len(vals)>=col and vals[col-1] is not None else '') for field,col in injury_cols.items()}})
   adult_payment[category]=records
 
  # Some player tabs have non-standard headings. Count numbered rows directly
@@ -1427,11 +1432,32 @@ class H(BaseHTTPRequestHandler):
    pie_style=f'background:conic-gradient(#08764a 0 {coverage_pct:.3f}%, #d58c22 {coverage_pct:.3f}% 100%);'
    if not known:pie_style='background:#dce5de;'
    chart=f"""<div class="card"><h3>Potential Club Injury Claims Exposure</h3><div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:32px;padding:15px 0"><div role="img" aria-label="Private insurance: {coverage_pct:.1f}% Yes and {gap_pct:.1f}% No among {known} recorded responses" style="width:230px;height:230px;border-radius:50%;{pie_style}box-shadow:0 12px 20px #183c2a30, inset 0 -9px 0 #00000012;flex-shrink:0"></div><div style="min-width:220px;line-height:2"><div><span style="display:inline-block;width:14px;height:14px;background:#08764a;border-radius:3px;margin-right:9px"></span><b>Covered: {coverage_pct:.1f}%</b> ({yes} players)</div><div><span style="display:inline-block;width:14px;height:14px;background:#d58c22;border-radius:3px;margin-right:9px"></span><b>Without private cover: {gap_pct:.1f}%</b> ({no} players)</div><div><b>Potential club injury-claim exposure: {gap_pct:.1f}%</b> of recorded Yes/No responses</div><div class="muted">Not recorded: {unknown} players (excluded from pie)</div></div></div><p class="muted">Potential club injury-claim exposure means the percentage of players reporting no private medical insurance. It is not a prediction of claims or a measured percentage of the club's financial or legal liability. Across all {len(entries)} player records, {total_gap_pct:.1f}% explicitly report no private cover. Missing answers are unknown, not No.</p></div>"""
+   def injury_money(value):
+    raw=str(value or '').strip().replace('€','').replace(',','').replace('EUR','').strip()
+    try:return float(raw) if raw else None
+    except ValueError:return None
+   claims=[]
+   for team,key in groups:
+    for member in DEMO.get('adult_payment',{}).get(key,[]):
+     injury=member.get('injury',{}) or {}
+     description=str(injury.get('description','')).strip()
+     date=str(injury.get('date','')).strip()
+     amount=str(injury.get('claim_amount','')).strip()
+     shortfall=str(injury.get('shortfall_amount','')).strip()
+     if not any((description,date,amount,shortfall)):continue
+     claims.append((team,str(member.get('name','')).strip(),description,date,amount,shortfall))
+   claim_total=sum(v for row in claims if (v:=injury_money(row[4])) is not None)
+   shortfall_total=sum(v for row in claims if (v:=injury_money(row[5])) is not None)
+   claim_amounts_count=sum(injury_money(row[4]) is not None for row in claims)
+   shortfall_amounts_count=sum(injury_money(row[5]) is not None for row in claims)
+   injury_rows=''.join(f'<tr><td>{e(team)}</td><td>{e(name)}</td><td>{e(desc or "Not recorded")}</td><td>{e(date or "Not recorded")}</td><td>{e("€"+format(injury_money(amount),",.2f") if injury_money(amount) is not None else "Not recorded")}</td><td>{e("€"+format(injury_money(shortfall),",.2f") if injury_money(shortfall) is not None else "Not recorded")}</td></tr>' for team,name,desc,date,amount,shortfall in claims)
+   if not injury_rows:injury_rows='<tr><td colspan="6" class="muted">No injury claims recorded in the two source tabs yet.</td></tr>'
+   injury_panel=f"""<div class="section-title"><h3>Injury Claims &amp; Club Financial Exposure</h3></div><div class="grid"><div class="card kpi"><div class="stat">{len(claims)}</div><b>Players with injury records</b></div><div class="card kpi"><div class="stat">€{claim_total:,.2f}</div><b>Recorded claim amounts</b><small>{claim_amounts_count} amount(s) recorded</small></div><div class="card kpi"><div class="stat">€{shortfall_total:,.2f}</div><b>Recorded claim shortfalls</b><small>{shortfall_amounts_count} amount(s) recorded</small></div></div><div class="card"><h3>Senior-player injury claim register</h3><div class="tw"><table><tr><th>Team</th><th>Player</th><th>Injury description</th><th>Injury / claim date</th><th>Claim amount</th><th>Claim shortfall</th></tr>{injury_rows}</table></div><p class="muted">Source: the four injury-claim columns in the Senior Adult Ladies Members and Senior Adult Mens Members worksheets. Blank records are omitted. Totals include only valid amounts entered in the sheet; missing values are not assumed to be zero. The shortfall is a potential financial exposure, not a confirmed club liability. GAA injury benefit and other insurance payments depend on applicable terms and the circumstances of each claim.</p></div>"""
    def insurance_table(label):
     items=sorted(((name,status) for team,name,status in entries if team==label),key=lambda item:item[0].casefold())
     rows=''.join(f'<tr><td>{e(name)}</td><td><span class="badge {("valid" if status=="YES" else "expired" if status=="NO" else "unknown")}">{e(status.title() if status!="NOT RECORDED" else "Not recorded")}</span></td></tr>' for name,status in items)
     return f'<div class="card"><h3>{e(label)} <small class="muted">({len(items)} players)</small></h3><div class="tw"><table><tr><th>Player name</th><th>Private medical insurance</th></tr>{rows}</table></div></div>'
-   b=f'''<div class="hero"><div><div class="eyebrow">Player welfare</div><h2>Insurance &amp; Injuries</h2><p>Private medical insurance register for senior adult playing members, drawn from the Eastern Gaels demographics workbook.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{len(entries)}</div><b>Senior players</b></div><div class="card kpi"><div class="stat">{yes}</div><b>Private insurance: Yes</b></div><div class="card kpi"><div class="stat">{no}</div><b>Private insurance: No</b></div><div class="card kpi"><div class="stat">{unknown}</div><b>Not recorded</b></div></div><div class="card"><p class="muted"><b>Data source:</b> Senior Adult Ladies Members and Senior Adult Mens Members tabs. Only player names and the Private Medical Insurance – Yes/No field are used. Blank answers remain Not recorded. Changes to the source sheet appear after the dashboard's next successful demographics sync.</p><p class="muted"><b>Risk note:</b> This is an information-completeness register, not an assessment of club liability or eligibility for injury benefits. Club policy terms and applicable injury schemes must be reviewed separately.</p></div>{chart}<div class="grid2">{insurance_table('Senior Adult Ladies')}{insurance_table('Senior Adult Mens')}</div>'''
+   b=f'''<div class="hero"><div><div class="eyebrow">Player welfare</div><h2>Insurance &amp; Injuries</h2><p>Private medical insurance register for senior adult playing members, drawn from the Eastern Gaels demographics workbook.</p></div></div><div class="grid"><div class="card kpi"><div class="stat">{len(entries)}</div><b>Senior players</b></div><div class="card kpi"><div class="stat">{yes}</div><b>Private insurance: Yes</b></div><div class="card kpi"><div class="stat">{no}</div><b>Private insurance: No</b></div><div class="card kpi"><div class="stat">{unknown}</div><b>Not recorded</b></div></div><div class="card"><p class="muted"><b>Data source:</b> Senior Adult Ladies Members and Senior Adult Mens Members tabs. Only player names and the Private Medical Insurance – Yes/No field are used. Blank answers remain Not recorded. Changes to the source sheet appear after the dashboard's next successful demographics sync.</p><p class="muted"><b>Risk note:</b> This is an information-completeness register, not an assessment of club liability or eligibility for injury benefits. Club policy terms and applicable injury schemes must be reviewed separately.</p></div>{chart}{injury_panel}<div class="grid2">{insurance_table('Senior Adult Ladies')}{insurance_table('Senior Adult Mens')}</div>'''
    return self.out(page('Insurance & Injuries',b,u))
   if path=='/membership':
    c.close();ages=dict(sorted(DEMO.get('age_totals',{}).items(),key=lambda x:int(x[0][1:])));years=sorted((int(y) for y in DEMO.get('growth',{}) if str(y).isdigit()));latest=years[-1] if years else datetime.now().year;total=int(DEMO.get('growth',{}).get(str(latest),sum(ages.values())));cards=''.join(f'<a class="chartlink" href="/demographics/age?group={e(k)}"><div class="card kpi"><div class="stat">{int(v)}</div><b>{e(k)}</b><small>View player names & school</small></div></a>' for k,v in ages.items())
