@@ -8,6 +8,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
+from reportlab.graphics.shapes import Drawing, Wedge, String, Ellipse
+from reportlab.graphics import renderPDF
 
 GREEN=colors.HexColor('#075438')
 GOLD=colors.HexColor('#d9a62c')
@@ -58,6 +60,32 @@ def build_pdf(demo, base):
     story.append(Spacer(1,12))
     story.append(Paragraph(('Potential exposure: %.1f%% of recorded Yes/No responses report no private medical cover.'%exposure) if known else 'Potential exposure: awaiting recorded Yes/No responses.',styles['Normal']))
     story.append(Paragraph('Unknown responses are excluded from this percentage. This is not a probability of injury or confirmed club liability.',styles['EGSmall']))
+    # Centred, vector insurance graphic on the first report-content page.
+    # The approved cover remains a separate front page when available.
+    story.append(Spacer(1,13))
+    if known:
+        from reportlab.graphics.charts.piecharts import Pie
+        graphic=Drawing(360,205)
+        pie=Pie()
+        pie.x=99;pie.y=26;pie.width=162;pie.height=145
+        pie.data=[yes,no]
+        pie.labels=['','']
+        pie.startAngle=90
+        pie.slices[0].fillColor=colors.HexColor('#08764a')
+        pie.slices[1].fillColor=colors.HexColor('#d58c22')
+        pie.slices[0].strokeColor=colors.white
+        pie.slices[1].strokeColor=colors.white
+        pie.slices[0].strokeWidth=1.5
+        pie.slices[1].strokeWidth=1.5
+        graphic.add(Ellipse(180,31,81,19,fillColor=colors.HexColor('#c5d8cd'),strokeColor=None))
+        graphic.add(pie)
+        graphic.add(String(180,192,'PRIVATE MEDICAL INSURANCE',textAnchor='middle',fontName='Helvetica-Bold',fontSize=11,fillColor=GREEN))
+        graphic.add(String(180,7,'Private cover: %d  |  No private cover: %d'%(yes,no),textAnchor='middle',fontSize=10,fillColor=GREEN))
+        graphic.hAlign='CENTER'
+        story.append(graphic)
+    else:
+        story.append(Paragraph('Insurance chart: awaiting Yes/No responses.',styles['EGSmall']))
+    story.append(Spacer(1,6))
     story.append(Paragraph('Insurance status by team',styles['EGHeading']))
     rows=[['Team','Players','Yes','No','Unknown','Exposure']]
     for team,key in groups:
