@@ -36,6 +36,7 @@ def build_pdf(demo, base):
     styles.add(ParagraphStyle(name='EGHeading',parent=styles['Heading2'],textColor=GREEN,spaceBefore=17,spaceAfter=9))
     styles.add(ParagraphStyle(name='EGSmall',parent=styles['Normal'],fontSize=8.3,leading=12))
     styles.add(ParagraphStyle(name='EGCell',parent=styles['Normal'],fontSize=7,leading=10))
+    styles.add(ParagraphStyle(name='EGCellWhite',parent=styles['EGCell'],textColor=colors.white,fontName='Helvetica-Bold'))
     buf=io.BytesIO()
     doc=SimpleDocTemplate(buf,pagesize=A4,rightMargin=36,leftMargin=36,topMargin=35,bottomMargin=42,title='Eastern Gaels Insurance and Injury Claims Report')
     story=[]
@@ -101,7 +102,7 @@ def build_pdf(demo, base):
     def money(v):
         a=amount(v)
         return ('EUR '+format(a,',.2f')) if a is not None else 'Not recorded'
-    claim_rows=[[cell(x) for x in ['Team','Player','Injury description','Date','Claim amount','Shortfall']]]
+    claim_rows=[[Paragraph(escape(x),styles['EGCellWhite']) for x in ['Team','Player','Injury description','Date','Claim amount','Shortfall']]]
     for team,name,desc,dt,claim,short in claims:
         claim_rows.append([cell(x) for x in [team,name,desc,dt,money(claim),money(short)]])
     if len(claim_rows)==1:claim_rows.append([cell('No injury claims recorded'),'','','','',''])
