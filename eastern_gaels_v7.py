@@ -1488,6 +1488,47 @@ class H(BaseHTTPRequestHandler):
    schoolcards=''.join(f'<a class="chartlink" href="/reports/detail?school={e(k)}"><div class="card"><h3>{e(k)}</h3><div class="stat">{v[0]} / {v[1]}</div><div class="muted">sessions completed · {round(v[0]*100/v[1]) if v[1] else 0}%</div><div class="progress"><span style="width:{v[0]*100/v[1] if v[1] else 0:.0f}%"></span></div></div></a>' for k,v in sorted(byschool.items()))
    d1=pct;d2=min(100,d1+(cancelled*100/total if total else 0));d3=min(100,d2+(closed*100/total if total else 0))
    c.close();b=f'''<h2>Coaching Dashboard</h2><p class="muted">Live summary of the 2026–2027 schools coaching programme.</p><div class="grid"><div class="card kpi"><div class="stat">{done}</div><b>Sessions completed</b><small>of {total} planned</small></div><div class="card kpi"><div class="stat">{pct}%</div><b>Programme complete</b><small>{scheduled} still scheduled</small></div><div class="card kpi"><div class="stat">{hours:.1f}</div><b>Coaching hours</b><small>completed sessions</small></div><div class="card kpi"><div class="stat">{attendance}</div><b>Recorded attendance</b><small>total contacts entered</small></div></div><div class="grid"><div class="card"><h3>Completed sessions by month</h3>{monthbars}</div><div class="card"><h3>Session status</h3><div class="donut" style="--done:{d1}%;--cancel:{d2}%;--closed:{d3}%"></div><div class="legend"><span><i class="dot"></i>Completed {done}</span><span>Cancelled {cancelled}</span><span>School closed {closed}</span><span>Scheduled {scheduled}</span></div></div></div><div class="grid"><div class="card"><h3>Completed by school</h3>{schoolbars}</div><div class="card"><h3>Completed by coach</h3>{coachbars}</div></div><h3>School progress</h3><div class="grid">{schoolcards}</div><div class="actions"><a class="btn" href="/export.csv">Download CSV report</a></div>''';return self.out(page('Dashboard',b,u))
+  if path=='/reports':
+   c.close()
+   b='''<div class="hero"><div><div class="eyebrow">Club governance</div><h2>Reports Centre</h2><p>Ready-to-use reports for committee review and club records.</p></div></div><div class="grid"><div class="card"><h3>Insurance, Injury Claims &amp; Financial Exposure</h3><p>Senior ladies and men: private medical insurance coverage, potential exposure, recorded injuries, claim amounts and shortfalls. The report updates when demographics are synchronised.</p><div class="actions"><a class="btn" href="/reports/insurance-injuries">Open report</a></div></div><div class="card"><h3>Schools Coaching Report</h3><p>Coaching sessions, completion, attendance and school progress.</p><div class="actions"><a class="btn secondary" href="/schools-coaching">Open coaching report</a></div></div></div>'''
+   return self.out(page('Reports Centre',b,u))
+  if path=='/reports/insurance-injuries':
+   c.close()
+   groups=[('Senior Adult Ladies','Senior ladies'),('Senior Adult Mens','Senior men')]
+   records=[(team,m) for team,key in groups for m in DEMO.get('adult_payment',{}).get(key,[]) if str(m.get('name','')).strip()]
+   yes=sum(str(m.get('private_medical_insurance','')).strip().upper()=='YES' for _,m in records)
+   no=sum(str(m.get('private_medical_insurance','')).strip().upper()=='NO' for _,m in records)
+   unknown=len(records)-yes-no
+   known=yes+no
+   exposure=100*no/known if known else 0
+   def amount(v):
+    raw=str(v or '').strip().replace('€','').replace(',','').replace('EUR','').strip()
+    try:return float(raw) if raw else None
+    except (ValueError,OverflowError):return None
+   claims=[]
+   for team,m in records:
+    injury=m.get('injury',{}) or {}
+    fields=[str(injury.get(k,'') or '').strip() for k in ('description','date','claim_amount','shortfall_amount')]
+    if any(fields):claims.append((team,str(m.get('name','')).strip(),*fields))
+   claim_values=[amount(x[4]) for x in claims]
+   short_values=[amount(x[5]) for x in claims]
+   total_claims=sum(v for v in claim_values if v is not None)
+   total_shortfalls=sum(v for v in short_values if v is not None)
+   def fmt(v):
+    n=amount(v)
+    return '€'+format(n,',.2f') if n is not None else 'Not recorded'
+   rows=''.join(f'<tr><td>{e(team)}</td><td>{e(name)}</td><td>{e(desc or "Not recorded")}</td><td>{e(dt or "Not recorded")}</td><td>{e(fmt(amt))}</td><td><b>{e(fmt(short))}</b></td></tr>' for team,name,desc,dt,amt,short in claims)
+   if not rows:rows='<tr><td colspan="6" class="muted">No injury claims have been entered in the source workbook yet. This report is ready to populate automatically.</td></tr>'
+   team_rows=''
+   for team,key in groups:
+    subset=[m for t,m in records if t==team]
+    cy=sum(str(m.get('private_medical_insurance','')).strip().upper()=='YES' for m in subset)
+    cn=sum(str(m.get('private_medical_insurance','')).strip().upper()=='NO' for m in subset)
+    ck=cy+cn
+    team_rows+=f'<tr><td>{e(team)}</td><td>{len(subset)}</td><td>{cy}</td><td>{cn}</td><td>{len(subset)-ck}</td><td>{f"{100*cn/ck:.1f}%" if ck else "Awaiting responses"}</td></tr>'
+   chart=f'background:conic-gradient(#08764a 0 {100*yes/known:.3f}%, #d58c22 {100*yes/known:.3f}% 100%)' if known else 'background:#dce5de'
+   b=f"""<style>@media print{{.sidebar,.topbar,.actions,nav,button{{display:none!important}}.main,.content{{margin:0!important;padding:0!important;width:100%!important}}.card{{break-inside:avoid;box-shadow:none!important;border:1px solid #ddd!important}}table{{font-size:10px}}h2{{color:#173d2d}}}} </style><div class="hero"><div><div class="eyebrow">Eastern Gaels · Committee report</div><h2>Insurance, Injury Claims &amp; Financial Exposure</h2><p>Senior Adult Ladies &amp; Senior Adult Mens · Generated {date.today().strftime('%d %B %Y')}</p></div></div><div class="actions"><a class="btn secondary" href="/reports">Back to Reports Centre</a><button type="button" onclick="window.print()">Print / Save as PDF</button></div><div class="grid"><div class="card kpi"><div class="stat">{len(records)}</div><b>Senior players</b></div><div class="card kpi"><div class="stat">{yes}</div><b>Private cover confirmed</b></div><div class="card kpi"><div class="stat">{no}</div><b>No private cover</b></div><div class="card kpi"><div class="stat">{unknown}</div><b>Cover status unknown</b></div></div><div class="card"><h3>Potential club injury-claim exposure</h3><div style="display:flex;align-items:center;justify-content:center;gap:35px;flex-wrap:wrap"><div role="img" aria-label="Insurance coverage chart" style="width:190px;height:190px;border-radius:50%;{chart};flex-shrink:0"></div><div><h2>{f"{exposure:.1f}%" if known else "Awaiting responses"}</h2><p>Players reporting no private medical cover, as a share of recorded Yes/No responses.</p><p><b style="color:#08764a">●</b> Private cover: {yes} &nbsp; <b style="color:#d58c22">●</b> No private cover: {no}</p><p class="muted">Unknown: {unknown}; excluded from this percentage.</p></div></div></div><div class="card"><h3>Insurance status by team</h3><div class="tw"><table><tr><th>Team</th><th>Players</th><th>Yes</th><th>No</th><th>Unknown</th><th>Potential exposure</th></tr>{team_rows}</table></div></div><div class="section-title"><h3>Injury Claims &amp; Recorded Shortfalls</h3></div><div class="grid"><div class="card kpi"><div class="stat">{len(claims)}</div><b>Players with injury records</b></div><div class="card kpi"><div class="stat">€{total_claims:,.2f}</div><b>Recorded claim amounts</b><small>{sum(v is not None for v in claim_values)} amount(s) supplied</small></div><div class="card kpi"><div class="stat">€{total_shortfalls:,.2f}</div><b>Recorded shortfall amounts</b><small>{sum(v is not None for v in short_values)} amount(s) supplied</small></div></div><div class="card"><h3>Player injury claim register</h3><div class="tw"><table><tr><th>Team</th><th>Player</th><th>Injury description</th><th>Date</th><th>Claim amount</th><th>Shortfall amount</th></tr>{rows}</table></div></div><div class="card"><h3>Committee interpretation &amp; data notes</h3><p><b>Coverage exposure:</b> The percentage of recorded No responses indicates the share of players potentially exposed without private medical cover. It is not the probability of an injury claim or the club's confirmed liability.</p><p><b>Financial exposure:</b> The sum of recorded claim shortfalls is a potential exposure indicator, not an automatic obligation for the club to pay. GAA injury benefit arrangements and any private cover are subject to their respective terms and each claim's circumstances.</p><p><b>Data quality:</b> Missing insurance responses are excluded from the coverage percentage and counted separately. Missing claim amounts are excluded from financial totals, not assumed to be zero. A player appears in the injury register when any of the four injury fields is populated.</p><p class="muted">Source: Eastern Gaels demographics workbook, Senior Adult Ladies Members and Senior Adult Mens Members. Figures reflect the latest successful dashboard demographics synchronisation. This report contains personal and health-related information; circulate only to authorised club personnel.</p></div>"""
+   return self.out(page('Insurance & Injury Report',b,u))
   if path=='/reports/detail':
    school=q.get('school',[''])[0];coach=q.get('coach',[''])[0];w,a=self.vis(u);con='and' if 'where' in w else 'where';extra='';vals=list(a);title='Completed sessions'
    if school:extra=' school=?';vals.append(school);title=school
