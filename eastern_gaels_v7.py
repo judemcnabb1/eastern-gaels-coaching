@@ -1489,8 +1489,9 @@ class H(BaseHTTPRequestHandler):
    d1=pct;d2=min(100,d1+(cancelled*100/total if total else 0));d3=min(100,d2+(closed*100/total if total else 0))
    c.close();b=f'''<h2>Coaching Dashboard</h2><p class="muted">Live summary of the 2026–2027 schools coaching programme.</p><div class="grid"><div class="card kpi"><div class="stat">{done}</div><b>Sessions completed</b><small>of {total} planned</small></div><div class="card kpi"><div class="stat">{pct}%</div><b>Programme complete</b><small>{scheduled} still scheduled</small></div><div class="card kpi"><div class="stat">{hours:.1f}</div><b>Coaching hours</b><small>completed sessions</small></div><div class="card kpi"><div class="stat">{attendance}</div><b>Recorded attendance</b><small>total contacts entered</small></div></div><div class="grid"><div class="card"><h3>Completed sessions by month</h3>{monthbars}</div><div class="card"><h3>Session status</h3><div class="donut" style="--done:{d1}%;--cancel:{d2}%;--closed:{d3}%"></div><div class="legend"><span><i class="dot"></i>Completed {done}</span><span>Cancelled {cancelled}</span><span>School closed {closed}</span><span>Scheduled {scheduled}</span></div></div></div><div class="grid"><div class="card"><h3>Completed by school</h3>{schoolbars}</div><div class="card"><h3>Completed by coach</h3>{coachbars}</div></div><h3>School progress</h3><div class="grid">{schoolcards}</div><div class="actions"><a class="btn" href="/export.csv">Download CSV report</a></div>''';return self.out(page('Dashboard',b,u))
   if path=='/club-sponsorship':
+   from club_sponsorship import render as sponsorship_render
+   b=sponsorship_render(c,u['role']=='admin')
    c.close()
-   b='''<div class="hero"><div><div class="eyebrow">Club partnerships</div><h2>Club Sponsorship</h2><p>Dedicated area for Eastern Gaels club sponsorship.</p></div></div><div class="card"><h3>Club Sponsorship</h3><p class="muted">This section is ready for sponsorship information and features to be added.</p></div>'''
    return self.out(page('Club Sponsorship',b,u))
   if path=='/reports':
    c.close()
@@ -1565,6 +1566,25 @@ class H(BaseHTTPRequestHandler):
  def do_POST(self):
   global DEMO,COACHING
   p=urlparse(self.path).path
+  if p in ('/club-sponsorship/save','/club-sponsorship/payment','/club-sponsorship/update'):
+   u=self.need()
+   if not u:return
+   if u['role']!='admin':return self.send_error(403)
+   try:n=int(self.headers.get('Content-Length','0'))
+   except ValueError:return self.send_error(400)
+   if n<=0 or n>12000:return self.send_error(413)
+   from club_sponsorship import save as sponsorship_save
+   c=dbc()
+   try:
+    sponsorship_save(c,p,self.rfile.read(n))
+   except ValueError as ex:
+    c.close()
+    return self.out(page('Sponsorship validation',f'<div class="card"><h2>Could not save sponsorship</h2><p>{e(ex)}</p><a class="btn" href="/club-sponsorship">Back to Club Sponsorship</a></div>',u),400)
+   except Exception:
+    c.rollback();c.close()
+    return self.send_error(500,'Could not save sponsorship')
+   c.close()
+   return self.red('/club-sponsorship')
   if p=='/compliance/save':
    u=self.need()
    if not u:return
